@@ -35,6 +35,7 @@
       height:200px; overflow-y:auto; background:var(--input-bg);
     }
     #kaddr { font-size:.9em; color:var(--accent); word-break:break-all; }
+    #qrcode { margin: .5em 0; }
     .row { display:flex; gap:.5em; }
     .row>* { flex:1; }
   </style>
@@ -46,6 +47,7 @@
   </header>
 
   <p>Your Address: <strong id="kaddr">generating…</strong></p>
+  <div id="qrcode"></div>
 
   <label>Group Peers (comma-sep K(...) IDs):</label>
   <input type="text" id="peer-input" placeholder="e.g. K(123.45.67.89), K(98.76.54.32)">
@@ -65,123 +67,134 @@
   <h2>Messages</h2>
   <div id="messages"></div>
 
+  <!-- PeerJS & QRCode.js -->
   <script src="https://unpkg.com/peerjs@1.3.2/dist/peerjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
-    // --- Immediate K(addr) generation ---
+    // --- Immediate K(addr) generation & QR rendering ---
     (function(){
       function rnd(){return Math.floor(Math.random()*256);}
-      const parts=[rnd(),rnd(),rnd(),rnd()];
-      window.__KQSP = { display: parts.join('.'), id: parts.join('-') };
-      document.getElementById('kaddr').textContent = 'K('+window.__KQSP.display+')';
+      const parts = [rnd(),rnd(),rnd(),rnd()];
+      const display = parts.join('.');
+      const peerId  = parts.join('-');
+      window.__KQSP = { display, id: peerId };
+
+      // show address text
+      const addrEl = document.getElementById('kaddr');
+      addrEl.textContent = 'K(' + display + ')';
+
+      // generate QR Code of the exact K(...) string
+      new QRCode(document.getElementById('qrcode'), {
+        text: 'K(' + display + ')',
+        width: 128,
+        height: 128
+      });
     })();
 
     // --- Dark mode toggle ---
     const themeBtn = document.getElementById('theme-toggle'), body = document.body;
-    let dark=false;
-    themeBtn.onclick = ()=>{
+    let dark = false;
+    themeBtn.onclick = () => {
       dark = !dark;
       body.classList.toggle('dark-mode', dark);
       themeBtn.textContent = dark ? '☀️' : '🌙';
     };
 
-    // --- PeerJS & Group Key ---
+    // --- PeerJS & group key setup ---
     const peer = new Peer(window.__KQSP.id);
     const conns = [];
     let groupKey;
 
-    peer.on('open', ()=> updateGroupKey());
-    peer.on('error', e=> alert('PeerJS error: '+e));
-    peer.on('connection', c=>{
-      conns.push(c);
-      c.on('open', ()=>{
-        alert('User joined: '+c.peer);
-        setupConnection(c);
+    peer.on('open', () => updateGroupKey());
+    peer.on('error', e => alert('PeerJS error: ' + e));
+    peer.on('connection', conn => {
+      conns.push(conn);
+      conn.on('open', () => {
+        alert('User joined: ' + conn.peer);
+        setupConnection(conn);
         updateGroupKey();
         updateButtons();
       });
     });
 
-    document.getElementById('connect-btn').onclick = ()=>{
+    document.getElementById('connect-btn').onclick = () => {
       const raws = document.getElementById('peer-input').value;
-      const ids = raws.split(',').map(s=>s.trim().replace(/^K\(|\)$/g,'')).filter(Boolean);
-      if(!ids.length) return alert('Enter at least one K(...)');
-      ids.forEach(raw=>{
-        const pid = raw.replace(/\./g,'-');
+      const ids = raws.split(',')
+        .map(s => s.trim().replace(/^K\(|\)$/g, ''))
+        .filter(Boolean);
+      if (!ids.length) return alert('Enter at least one K(...)');
+      ids.forEach(raw => {
+        const pid = raw.replace(/\./g, '-');
         const c = peer.connect(pid);
         conns.push(c);
-        c.on('open', ()=>{
-          alert('Connected to: '+raw);
+        c.on('open', () => {
+          alert('Connected to: ' + raw);
           setupConnection(c);
           updateGroupKey();
           updateButtons();
         });
-        c.on('error', e=>alert('Connection error: '+e));
+        c.on('error', e => alert('Connection error: ' + e));
       });
     };
 
-    function updateButtons(){
-      const ok = conns.some(c=>c.open);
+    function updateButtons() {
+      const ok = conns.some(c => c.open);
       sendBtn.disabled = !ok;
       sendFileBtn.disabled = !ok;
     }
 
-    async function updateGroupKey(){
-      const ids = [peer.id, ...conns.filter(c=>c.open).map(c=>c.peer)]
-                    .filter((v,i,a)=>a.indexOf(v)===i).sort();
+    async function updateGroupKey() {
+      const ids = [peer.id, ...conns.filter(c => c.open).map(c => c.peer)]
+                   .filter((v,i,a)=>a.indexOf(v)===i).sort();
       const buf = await crypto.subtle.digest('SHA-256',
                    new TextEncoder().encode(JSON.stringify(ids)));
       groupKey = new Uint8Array(buf);
     }
 
-    function setupConnection(c){
-      c.on('data', async data=>{
-        if(data.type==='text'){
-          const enc = Uint8Array.from(data.text
-                        .split('').map(ch=>ch.charCodeAt(0)));
-          const dec = enc.map((b,i)=>b^groupKey[i%groupKey.length]);
+    function setupConnection(c) {
+      c.on('data', async data => {
+        if (data.type === 'text') {
+          const enc = Uint8Array.from(data.text.split('').map(ch => ch.charCodeAt(0)));
+          const dec = enc.map((b,i) => b ^ groupKey[i % groupKey.length]);
           append(`${data.from}: ${new TextDecoder().decode(dec)}`);
         }
-        else if(data.type==='file'){
+        else if (data.type === 'file') {
           alert(`File from ${data.from}: ${data.filename}`);
-          // decrypt loop for protected files
           let keyBytes = groupKey;
-          if(data.protected){
-            while(true){
+          if (data.protected) {
+            while(true) {
               const pwd = prompt(`Enter password for "${data.filename}":`);
-              if(pwd===null) return; // user cancelled
+              if (pwd === null) return;
               const buf = await crypto.subtle.digest('SHA-256',
-                           new TextEncoder().encode(pwd));
+                            new TextEncoder().encode(pwd));
               keyBytes = new Uint8Array(buf);
-              // decrypt and check header
-              const enc = new Uint8Array(data.data);
-              const decAll = enc.map((b,i)=>b^keyBytes[i%keyBytes.length]);
+              // check header
+              const encBytes = new Uint8Array(data.data);
+              const decAll = encBytes.map((b,i)=> b ^ keyBytes[i % keyBytes.length]);
               const header = new TextDecoder().decode(decAll.slice(0,4));
-              if(header === 'KQSP'){
-                // strip header
-                const fileBytes = decAll.slice(4);
-                makeDownload(fileBytes, data.filename);
+              if (header === 'KQSP') {
+                makeDownload(decAll.slice(4), data.filename);
                 break;
               } else {
                 alert('Wrong password—please try again.');
               }
             }
           } else {
-            // unprotected: decrypt with groupKey (no header)
-            const enc = new Uint8Array(data.data);
-            const decAll = enc.map((b,i)=>b^keyBytes[i%keyBytes.length]);
+            const encBytes = new Uint8Array(data.data);
+            const decAll = encBytes.map((b,i)=> b ^ keyBytes[i % keyBytes.length]);
             makeDownload(decAll, data.filename);
           }
         }
       });
-      c.on('close', ()=>{
-        alert('Peer left: '+c.peer);
+      c.on('close', () => {
+        alert('Peer left: ' + c.peer);
         updateGroupKey();
         updateButtons();
       });
     }
 
-    function makeDownload(bytes, filename){
-      const blob = new Blob([bytes], {type:'application/octet-stream'});
+    function makeDownload(bytes, filename) {
+      const blob = new Blob([bytes], { type: 'application/octet-stream' });
       const a = document.createElement('a');
       a.download = filename;
       a.href = URL.createObjectURL(blob);
@@ -191,7 +204,7 @@
       msg.appendChild(document.createElement('br'));
     }
 
-    function append(text){
+    function append(text) {
       const d = document.createElement('div');
       d.textContent = text;
       document.getElementById('messages').appendChild(d);
@@ -199,52 +212,52 @@
 
     // --- Send text ---
     const sendBtn = document.getElementById('send-btn');
-    sendBtn.onclick = ()=>{
+    sendBtn.onclick = () => {
       const txt = document.getElementById('msg-input').value;
-      if(!txt) return;
+      if (!txt) return;
       const enc = new TextEncoder().encode(txt)
-                    .map((b,i)=>b^groupKey[i%groupKey.length]);
+                   .map((b,i)=> b ^ groupKey[i % groupKey.length]);
       const payload = {
-        type:'text',
-        from:`K(${window.__KQSP.display})`,
-        text:String.fromCharCode(...enc)
+        type: 'text',
+        from: `K(${window.__KQSP.display})`,
+        text: String.fromCharCode(...enc)
       };
-      conns.filter(c=>c.open).forEach(c=>c.send(payload));
-      append('You: '+txt);
-      document.getElementById('msg-input').value='';
+      conns.filter(c => c.open).forEach(c => c.send(payload));
+      append('You: ' + txt);
+      document.getElementById('msg-input').value = '';
     };
 
     // --- Send file with optional password ---
     const sendFileBtn = document.getElementById('send-file-btn');
-    sendFileBtn.onclick = async ()=>{
+    sendFileBtn.onclick = async () => {
       const file = document.getElementById('file-input').files[0];
-      if(!file) return alert('Select a file');
+      if (!file) return alert('Select a file');
       const pwd = document.getElementById('file-password').value;
-      let keyBytes = groupKey, protectedFlag=false;
+      let keyBytes = groupKey, protectedFlag = false;
       const reader = new FileReader();
-      reader.onload = async ()=>{
+      reader.onload = async () => {
         let data = new Uint8Array(reader.result);
-        if(pwd){
+        if (pwd) {
           protectedFlag = true;
           const buf = await crypto.subtle.digest('SHA-256',
                        new TextEncoder().encode(pwd));
           keyBytes = new Uint8Array(buf);
-          // prepend header
           const header = new TextEncoder().encode('KQSP');
           const combined = new Uint8Array(header.length + data.length);
-          combined.set(header,0); combined.set(data,header.length);
+          combined.set(header, 0);
+          combined.set(data, header.length);
           data = combined;
         }
-        const enc = data.map((b,i)=>b^keyBytes[i%keyBytes.length]);
+        const encBytes = data.map((b,i)=> b ^ keyBytes[i % keyBytes.length]);
         const payload = {
-          type:'file',
-          from:`K(${window.__KQSP.display})`,
-          filename:file.name,
-          protected:protectedFlag,
-          data:enc.buffer
+          type: 'file',
+          from: `K(${window.__KQSP.display})`,
+          filename: file.name,
+          protected: protectedFlag,
+          data: encBytes.buffer
         };
         conns.filter(c=>c.open).forEach(c=>c.send(payload));
-        alert('Encrypted file sent: '+file.name);
+        alert('Encrypted file sent: ' + file.name);
       };
       reader.readAsArrayBuffer(file);
     };
