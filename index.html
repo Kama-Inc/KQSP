@@ -5,80 +5,144 @@
   <title>Kazan's Quick Share Protocol (KQSP)</title>
   <style>
     body { font-family: sans-serif; max-width: 600px; margin: 2em auto; }
-    input, button { font-size: 1em; margin: .5em 0; width: 100%; box-sizing: border-box; }
+    input, button, select { font-size: 1em; margin: .5em 0; width: 100%; box-sizing: border-box; }
     #messages { border: 1px solid #ccc; padding: 1em; height: 200px; overflow-y: auto; }
+    #kaddr { font-size: 0.9em; color: #333; }
+    #file-input { padding: .2em; }
   </style>
 </head>
 <body>
   <h1>Kazan's Quick Share Protocol</h1>
   <p>Your Address: <strong id="kaddr">connecting…</strong></p>
 
-  <label>Peer Address (K...):</label>
-  <input type="text" id="peer-input" placeholder="e.g. K(550.192.189.10)">
-  <button id="connect-btn">Connect</button>
+  <label>Group Peers (comma-sep K(...) IDs):</label>
+  <input type="text" id="peer-input" placeholder="e.g. K(id1), K(id2), K(id3)">
+  <button id="connect-btn">Connect to Group</button>
+
+  <label>KEA Key (for file encrypt/decrypt):</label>
+  <input type="text" id="key-input" placeholder="Enter shared key"/>
 
   <label>Message:</label>
   <input type="text" id="msg-input" placeholder="Type a message…">
-  <button id="send-btn" disabled>Send</button>
+  <button id="send-btn" disabled>Send Message</button>
+
+  <label>File:</label>
+  <input type="file" id="file-input">
+  <button id="send-file-btn" disabled>Send Encrypted File</button>
 
   <h2>Messages</h2>
   <div id="messages"></div>
 
-  <!-- PeerJS client library -->
   <script src="https://unpkg.com/peerjs@1.3.2/dist/peerjs.min.js"></script>
   <script>
-    // 1) Create a Peer using the public PeerJS cloud server:
-    const peer = new Peer(/* no args = random ID on default PeerJS cloud */);
+    const peer = new Peer();
+    const conns = [];   // all DataConnections
 
-    // 2) When we get our assigned ID, show it as K(address)
+    // display our K(address)
     peer.on('open', id => {
-      const k = 'K(' + id + ')';
-      document.getElementById('kaddr').textContent = k;
+      document.getElementById('kaddr').textContent = 'K(' + id + ')';
     });
 
-    // 3) Handle an incoming connection
-    peer.on('connection', conn => {
-      setupConnection(conn);
+    // handle incoming connections
+    peer.on('connection', incoming => {
+      conns.push(incoming);
+      incoming.on('open', () => {
+        alert('User joined group: ' + incoming.peer);
+        setupConnection(incoming);
+        updateButtons();
+      });
     });
 
-    let conn;  // our current DataConnection
-
-    // 4) When user clicks “Connect”, dial the other peer
+    // Connect to multiple peers in the group
     document.getElementById('connect-btn').onclick = () => {
-      const raw = document.getElementById('peer-input').value.trim();
-      // Extract the peer ID from K(...)
-      const peerId = raw.replace(/^K\(|\)$/g, '');
-      if (!peerId) return alert('Enter a valid K(...) address');
-      conn = peer.connect(peerId);
-      conn.on('open', () => setupConnection(conn));
-      conn.on('error', e => alert('Connection error: ' + e));
+      const raw = document.getElementById('peer-input').value;
+      const ids = raw.split(',')
+        .map(s => s.trim().replace(/^K\(|\)$/g, ''))
+        .filter(s => s);
+      if (!ids.length) return alert('Enter at least one K(...) address');
+      ids.forEach(pid => {
+        const c = peer.connect(pid);
+        conns.push(c);
+        c.on('open', () => {
+          alert('Connected to: ' + pid);
+          setupConnection(c);
+          updateButtons();
+        });
+        c.on('error', e => alert('Connection error: ' + e));
+      });
     };
 
-    // 5) Common setup once the DataConnection is open
+    // enable/disable buttons based on connections
+    function updateButtons() {
+      const ok = conns.some(c=>c.open);
+      document.getElementById('send-btn').disabled = !ok;
+      document.getElementById('send-file-btn').disabled = !ok;
+    }
+
+    // common setup for each connection
     function setupConnection(c) {
-      conn = c;
-      document.getElementById('send-btn').disabled = false;
-      conn.on('data', data => {
-        const div = document.createElement('div');
-        div.textContent = data.from + ': ' + data.text;
-        document.getElementById('messages').appendChild(div);
+      c.on('data', data => {
+        if (data.type === 'text') {
+          const div = document.createElement('div');
+          div.textContent = data.from + ': ' + data.text;
+          document.getElementById('messages').appendChild(div);
+        }
+        else if (data.type === 'file') {
+          alert(`File received from ${data.from}: ${data.filename}`);
+          const key = prompt('Enter KEA key to decrypt "' + data.filename + '":');
+          if (key === null) return;
+          const enc = new Uint8Array(data.data);
+          const keyBytes = new TextEncoder().encode(key);
+          const dec = enc.map((b,i)=> b ^ keyBytes[i % keyBytes.length]);
+          const blob = new Blob([dec], { type: 'application/octet-stream' });
+          const a = document.createElement('a');
+          a.download = data.filename;
+          a.href = URL.createObjectURL(blob);
+          a.textContent = `Download ${data.filename}`;
+          document.getElementById('messages').appendChild(a);
+          document.getElementById('messages').appendChild(document.createElement('br'));
+        }
       });
-      conn.on('close', () => {
-        document.getElementById('send-btn').disabled = true;
-        alert('Peer disconnected');
+      c.on('close', () => {
+        alert('A peer has left the group: ' + c.peer);
+        updateButtons();
       });
     }
 
-    // 6) Send a message
+    // send a chat message to all peers
     document.getElementById('send-btn').onclick = () => {
       const text = document.getElementById('msg-input').value;
-      if (!conn || !conn.open) return alert('Not connected');
+      if (!text) return;
       const from = document.getElementById('kaddr').textContent;
-      conn.send({ from, text });
+      conns.filter(c=>c.open).forEach(c=>{
+        c.send({ type: 'text', from, text });
+      });
       const div = document.createElement('div');
       div.textContent = 'You: ' + text;
       document.getElementById('messages').appendChild(div);
       document.getElementById('msg-input').value = '';
+    };
+
+    // send an encrypted file to all peers
+    document.getElementById('send-file-btn').onclick = () => {
+      const file = document.getElementById('file-input').files[0];
+      const key = document.getElementById('key-input').value;
+      if (!file || !key) return alert('Select a file and enter KEA key');
+      const reader = new FileReader();
+      reader.onload = () => {
+        const data = new Uint8Array(reader.result);
+        const keyBytes = new TextEncoder().encode(key);
+        const enc = data.map((b,i)=> b ^ keyBytes[i % keyBytes.length]);
+        const payload = {
+          type: 'file',
+          from: document.getElementById('kaddr').textContent,
+          filename: file.name,
+          data: enc.buffer
+        };
+        conns.filter(c=>c.open).forEach(c=>c.send(payload));
+        alert('Encrypted file sent: ' + file.name);
+      };
+      reader.readAsArrayBuffer(file);
     };
   </script>
 </body>
