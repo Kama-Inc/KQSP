@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Kazan's Quick Share Protocol (KQSP)</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 2em auto; }
+    input, button { font-size: 1em; margin: .5em 0; width: 100%; box-sizing: border-box; }
+    #messages { border: 1px solid #ccc; padding: 1em; height: 200px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <h1>Kazan's Quick Share Protocol</h1>
+  <p>Your Address: <strong id="kaddr">connecting…</strong></p>
+
+  <label>Peer Address (K...):</label>
+  <input type="text" id="peer-input" placeholder="e.g. K(550.192.189.10)">
+  <button id="connect-btn">Connect</button>
+
+  <label>Message:</label>
+  <input type="text" id="msg-input" placeholder="Type a message…">
+  <button id="send-btn" disabled>Send</button>
+
+  <h2>Messages</h2>
+  <div id="messages"></div>
+
+  <!-- PeerJS client library -->
+  <script src="https://unpkg.com/peerjs@1.3.2/dist/peerjs.min.js"></script>
+  <script>
+    // 1) Create a Peer using the public PeerJS cloud server:
+    const peer = new Peer(/* no args = random ID on default PeerJS cloud */);
+
+    // 2) When we get our assigned ID, show it as K(address)
+    peer.on('open', id => {
+      const k = 'K(' + id + ')';
+      document.getElementById('kaddr').textContent = k;
+    });
+
+    // 3) Handle an incoming connection
+    peer.on('connection', conn => {
+      setupConnection(conn);
+    });
+
+    let conn;  // our current DataConnection
+
+    // 4) When user clicks “Connect”, dial the other peer
+    document.getElementById('connect-btn').onclick = () => {
+      const raw = document.getElementById('peer-input').value.trim();
+      // Extract the peer ID from K(...)
+      const peerId = raw.replace(/^K\(|\)$/g, '');
+      if (!peerId) return alert('Enter a valid K(...) address');
+      conn = peer.connect(peerId);
+      conn.on('open', () => setupConnection(conn));
+      conn.on('error', e => alert('Connection error: ' + e));
+    };
+
+    // 5) Common setup once the DataConnection is open
+    function setupConnection(c) {
+      conn = c;
+      document.getElementById('send-btn').disabled = false;
+      conn.on('data', data => {
+        const div = document.createElement('div');
+        div.textContent = data.from + ': ' + data.text;
+        document.getElementById('messages').appendChild(div);
+      });
+      conn.on('close', () => {
+        document.getElementById('send-btn').disabled = true;
+        alert('Peer disconnected');
+      });
+    }
+
+    // 6) Send a message
+    document.getElementById('send-btn').onclick = () => {
+      const text = document.getElementById('msg-input').value;
+      if (!conn || !conn.open) return alert('Not connected');
+      const from = document.getElementById('kaddr').textContent;
+      conn.send({ from, text });
+      const div = document.createElement('div');
+      div.textContent = 'You: ' + text;
+      document.getElementById('messages').appendChild(div);
+      document.getElementById('msg-input').value = '';
+    };
+  </script>
+</body>
+</html>
