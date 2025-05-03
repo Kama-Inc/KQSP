@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>KQSP</title>
+</head>
+<body>
+  <h1>Kazan's Quick Share Protocol</h1>
+  <p>Your Address: <span id="kaddr">Loading...</span></p>
+
+  <input type="text" id="peer" placeholder="Enter peer K(...)">
+  <input type="text" id="message" placeholder="Message">
+  <button onclick="sendMessage()">Send</button>
+
+  <div id="messages"></div>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
