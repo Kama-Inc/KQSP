@@ -71,23 +71,20 @@
     (function(){
       function rnd(){return Math.floor(Math.random()*256);}
       const parts=[rnd(),rnd(),rnd(),rnd()];
-      window.__KQSP = {
-        display: parts.join('.'),
-        id:      parts.join('-')
-      };
+      window.__KQSP = { display: parts.join('.'), id: parts.join('-') };
       document.getElementById('kaddr').textContent = 'K('+window.__KQSP.display+')';
     })();
 
-    // --- Dark mode ---
-    const themeBtn = document.getElementById('theme-toggle'), body=document.body;
+    // --- Dark mode toggle ---
+    const themeBtn = document.getElementById('theme-toggle'), body = document.body;
     let dark=false;
     themeBtn.onclick = ()=>{
       dark = !dark;
       body.classList.toggle('dark-mode', dark);
-      themeBtn.textContent = dark? '☀️':'🌙';
+      themeBtn.textContent = dark ? '☀️' : '🌙';
     };
 
-    // --- PeerJS + group key setup ---
+    // --- PeerJS & Group Key ---
     const peer = new Peer(window.__KQSP.id);
     const conns = [];
     let groupKey;
@@ -118,7 +115,7 @@
           updateGroupKey();
           updateButtons();
         });
-        c.on('error', e=> alert('Connection error: '+e));
+        c.on('error', e=>alert('Connection error: '+e));
       });
     };
 
@@ -129,42 +126,51 @@
     }
 
     async function updateGroupKey(){
-      const ids = [peer.id,...conns.filter(c=>c.open).map(c=>c.peer)]
+      const ids = [peer.id, ...conns.filter(c=>c.open).map(c=>c.peer)]
                     .filter((v,i,a)=>a.indexOf(v)===i).sort();
-      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(ids)));
+      const buf = await crypto.subtle.digest('SHA-256',
+                   new TextEncoder().encode(JSON.stringify(ids)));
       groupKey = new Uint8Array(buf);
     }
 
     function setupConnection(c){
       c.on('data', async data=>{
         if(data.type==='text'){
-          // decrypt with group key
-          const enc = Uint8Array.from(data.text.split('').map(ch=>ch.charCodeAt(0)));
+          const enc = Uint8Array.from(data.text
+                        .split('').map(ch=>ch.charCodeAt(0)));
           const dec = enc.map((b,i)=>b^groupKey[i%groupKey.length]);
           append(`${data.from}: ${new TextDecoder().decode(dec)}`);
         }
         else if(data.type==='file'){
           alert(`File from ${data.from}: ${data.filename}`);
-          // choose decryption key
-          let keyBytes;
+          // decrypt loop for protected files
+          let keyBytes = groupKey;
           if(data.protected){
-            const pwd = prompt(`Enter password for "${data.filename}":`);
-            if(pwd===null) return;
-            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd));
-            keyBytes = new Uint8Array(buf);
+            while(true){
+              const pwd = prompt(`Enter password for "${data.filename}":`);
+              if(pwd===null) return; // user cancelled
+              const buf = await crypto.subtle.digest('SHA-256',
+                           new TextEncoder().encode(pwd));
+              keyBytes = new Uint8Array(buf);
+              // decrypt and check header
+              const enc = new Uint8Array(data.data);
+              const decAll = enc.map((b,i)=>b^keyBytes[i%keyBytes.length]);
+              const header = new TextDecoder().decode(decAll.slice(0,4));
+              if(header === 'KQSP'){
+                // strip header
+                const fileBytes = decAll.slice(4);
+                makeDownload(fileBytes, data.filename);
+                break;
+              } else {
+                alert('Wrong password—please try again.');
+              }
+            }
           } else {
-            keyBytes = groupKey;
+            // unprotected: decrypt with groupKey (no header)
+            const enc = new Uint8Array(data.data);
+            const decAll = enc.map((b,i)=>b^keyBytes[i%keyBytes.length]);
+            makeDownload(decAll, data.filename);
           }
-          const enc = new Uint8Array(data.data);
-          const dec = enc.map((b,i)=> b ^ keyBytes[i%keyBytes.length]);
-          const blob = new Blob([dec],{type:'application/octet-stream'});
-          const a = document.createElement('a');
-          a.download = data.filename;
-          a.href = URL.createObjectURL(blob);
-          a.textContent = `Download ${data.filename}`;
-          const msg = document.getElementById('messages');
-          msg.appendChild(a);
-          msg.appendChild(document.createElement('br'));
         }
       });
       c.on('close', ()=>{
@@ -174,13 +180,24 @@
       });
     }
 
+    function makeDownload(bytes, filename){
+      const blob = new Blob([bytes], {type:'application/octet-stream'});
+      const a = document.createElement('a');
+      a.download = filename;
+      a.href = URL.createObjectURL(blob);
+      a.textContent = `Download ${filename}`;
+      const msg = document.getElementById('messages');
+      msg.appendChild(a);
+      msg.appendChild(document.createElement('br'));
+    }
+
     function append(text){
-      const d=document.createElement('div');
-      d.textContent=text;
+      const d = document.createElement('div');
+      d.textContent = text;
       document.getElementById('messages').appendChild(d);
     }
 
-    // --- Sending text ---
+    // --- Send text ---
     const sendBtn = document.getElementById('send-btn');
     sendBtn.onclick = ()=>{
       const txt = document.getElementById('msg-input').value;
@@ -197,22 +214,27 @@
       document.getElementById('msg-input').value='';
     };
 
-    // --- Sending file ---
+    // --- Send file with optional password ---
     const sendFileBtn = document.getElementById('send-file-btn');
     sendFileBtn.onclick = async ()=>{
       const file = document.getElementById('file-input').files[0];
       if(!file) return alert('Select a file');
-      const pwd  = document.getElementById('file-password').value;
-      let keyBytes = groupKey;
-      let protectedFlag = false;
-      if(pwd){
-        protectedFlag = true;
-        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd));
-        keyBytes = new Uint8Array(buf);
-      }
+      const pwd = document.getElementById('file-password').value;
+      let keyBytes = groupKey, protectedFlag=false;
       const reader = new FileReader();
-      reader.onload = ()=>{
-        const data = new Uint8Array(reader.result);
+      reader.onload = async ()=>{
+        let data = new Uint8Array(reader.result);
+        if(pwd){
+          protectedFlag = true;
+          const buf = await crypto.subtle.digest('SHA-256',
+                       new TextEncoder().encode(pwd));
+          keyBytes = new Uint8Array(buf);
+          // prepend header
+          const header = new TextEncoder().encode('KQSP');
+          const combined = new Uint8Array(header.length + data.length);
+          combined.set(header,0); combined.set(data,header.length);
+          data = combined;
+        }
         const enc = data.map((b,i)=>b^keyBytes[i%keyBytes.length]);
         const payload = {
           type:'file',
