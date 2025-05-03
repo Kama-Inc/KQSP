@@ -103,15 +103,15 @@
       themeBtn.textContent = dark ? '☀️' : '🌙';
     };
 
-    // --- Generate numeric ID before PeerJS init ---
-    function randomOctet() { return Math.floor(Math.random() * 256); }
-    const localId = `${randomOctet()}.${randomOctet()}.${randomOctet()}.${randomOctet()}`;
-    document.getElementById('kaddr').textContent = 'K(' + localId + ')';
+    +  // --- Generate numeric ID before PeerJS init (display uses dots, ID uses dashes) ---
+  function randomOctet() { return Math.floor(Math.random() * 256); }
+  const parts = [randomOctet(), randomOctet(), randomOctet(), randomOctet()];
+  const displayId = parts.join('.');
+  const peerjsId  = parts.join('-');
+  document.getElementById('kaddr').textContent = 'K(' + displayId + ')';
 
-    // --- PeerJS Setup with custom numeric ID ---
-    const peer = new Peer(localId);
-    const conns = [];
-    let groupKeyBytes = null;
+  // --- PeerJS Setup with custom numeric ID (dashes) ---
+  const peer = new Peer(peerjsId);
 
     peer.on('open', id => {
       // id === localId
@@ -137,8 +137,10 @@
       const ids = raws.split(',')
         .map(s => s.trim().replace(/^K\(|\)$/g, ''))
         .filter(Boolean);
-      if (!ids.length) return alert('Enter at least one K(...)');
-      ids.forEach(pid => {
+     if (!ids.length) return alert('Enter at least one K(...)');
+      ids.forEach(rawId => {
+        // convert displayed dots into dashes for PeerJS
+        const pid = rawId.replace(/\./g, '-');
         const c = peer.connect(pid);
         conns.push(c);
         c.on('open', () => {
