@@ -73,7 +73,7 @@
   <p>Your Address: <strong id="kaddr">generating…</strong></p>
 
   <label>Group Peers (comma-sep K(...) IDs):</label>
-  <input type="text" id="peer-input" placeholder="e.g. K(500.1.2.3), K(44.55.66.77)">
+  <input type="text" id="peer-input" placeholder="e.g. K(123.45.67.89), K(98.76.54.32)">
 
   <button id="connect-btn">Connect to Group</button>
 
@@ -93,6 +93,17 @@
 
   <script src="https://unpkg.com/peerjs@1.3.2/dist/peerjs.min.js"></script>
   <script>
+    // --- Generate & Display Numeric K(addr) Immediately ---
+    (function(){
+      function randomOctet() { return Math.floor(Math.random() * 256); }
+      const parts     = [randomOctet(), randomOctet(), randomOctet(), randomOctet()];
+      const displayId = parts.join('.');
+      const peerjsId  = parts.join('-');
+      document.getElementById('kaddr').textContent = 'K(' + displayId + ')';
+      // stash for PeerJS init
+      window.__KQSP = { displayId, peerjsId };
+    })();
+
     // --- Dark Mode Toggle ---
     const themeBtn = document.getElementById('theme-toggle');
     const body = document.body;
@@ -103,25 +114,18 @@
       themeBtn.textContent = dark ? '☀️' : '🌙';
     };
 
-    +  // --- Generate numeric ID before PeerJS init (display uses dots, ID uses dashes) ---
-  function randomOctet() { return Math.floor(Math.random() * 256); }
-  const parts = [randomOctet(), randomOctet(), randomOctet(), randomOctet()];
-  const displayId = parts.join('.');
-  const peerjsId  = parts.join('-');
-  document.getElementById('kaddr').textContent = 'K(' + displayId + ')';
-
-  // --- PeerJS Setup with custom numeric ID (dashes) ---
-  const peer = new Peer(peerjsId);
+    // --- PeerJS Setup ---
+    const peer = new Peer(window.__KQSP.peerjsId);
+    const conns = [];
+    let groupKeyBytes = null;
 
     peer.on('open', id => {
-      // id === localId
+      // PeerJS is ready; derive group key
       updateGroupKey();
     });
-
     peer.on('error', err => {
       alert('PeerJS error: ' + err);
     });
-
     peer.on('connection', conn => {
       conns.push(conn);
       conn.on('open', () => {
@@ -137,14 +141,13 @@
       const ids = raws.split(',')
         .map(s => s.trim().replace(/^K\(|\)$/g, ''))
         .filter(Boolean);
-     if (!ids.length) return alert('Enter at least one K(...)');
-      ids.forEach(rawId => {
-        // convert displayed dots into dashes for PeerJS
-        const pid = rawId.replace(/\./g, '-');
+      if (!ids.length) return alert('Enter at least one K(...)');
+      ids.forEach(raw => {
+        const pid = raw.replace(/\./g, '-');
         const c = peer.connect(pid);
         conns.push(c);
         c.on('open', () => {
-          alert('Connected to: ' + pid);
+          alert('Connected to: ' + raw);
           setupConnection(c);
           updateGroupKey();
           updateButtons();
