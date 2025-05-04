@@ -1,10 +1,12 @@
 # Simple workflow for deploying static content to GitHub Pages
-name: Deploy static content to Pages
+name: Deploy React App to Pages
 
 on:
   # Runs on pushes targeting the default branch
   push:
     branches: ["main"]
+    paths:
+      - 'KQSPReactWeb/**' # Only run on changes within the React app folder
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -22,22 +24,40 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Single deploy job since we're just deploying
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  # Build job
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20 # Use a specific version, e.g., 20
+          cache: 'npm'
+          cache-dependency-path: KQSPReactWeb/package-lock.json # Cache based on React app's lock file
+      - name: Install Dependencies
+        working-directory: ./KQSPReactWeb # Specify working directory
+        run: npm ci --legacy-peer-deps # Use legacy-peer-deps if needed
+      - name: Build
+        working-directory: ./KQSPReactWeb # Specify working directory
+        run: npm run build
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
-          path: '.'
+          # Upload only the build output directory from the React app
+          path: './KQSPReactWeb/dist'
+
+  # Deployment job
+  deploy:
+    needs: build # Run after build job is complete
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
