@@ -38,6 +38,17 @@
     #qrcode, #qr-reader { margin:.5em 0; }
     .row { display:flex; gap:.5em; }
     .row>* { flex:1; }
+    @media (max-width: 600px) {
+      body { margin: 1em; }
+      header { flex-direction: column; align-items: flex-start; gap: 0.5em; }
+      h1 { font-size: 1.3em; }
+      button, input { font-size: 0.9em; padding: 0.6em; }
+      .row { flex-direction: column; }
+      #messages { height: 150px; }
+      #qrcode { text-align: center; }
+      #qrcode img { width: 100px !important; height: 100px !important; margin: auto; }
+      #qr-reader { width: 100%; }
+    }
   </style>
 </head>
 <body>
