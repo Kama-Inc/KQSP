@@ -4,10 +4,12 @@
 const {
     Peer
 } = require('peerjs'); // PeerJS library for WebRTC
+const wrtc = require('wrtc'); // Node.js WebRTC implementation
 const readline = require('readline'); // For reading user input from console
 const crypto = require('crypto'); // For SHA256 hashing (group key)
 const fs = require('fs'); // For potential file operations
 const os = require('os'); // For potential OS-specific features
+const process = require('process'); // To access command line arguments
 
 // --- Configuration & Global State ---
 let MY_PEER_ID = null;
@@ -53,7 +55,7 @@ function xorCrypt(dataBuffer, keyBuffer) {
 }
 
 // --- PeerJS Event Handlers ---
-function initializePeer(peerId) {
+function initializePeer(peerId, targetPeerId = null) { // <-- Add targetPeerId argument
     // IMPORTANT: Configure this to match your web version's signaling server!
     const peerJsOptions = {
         host: '0.peerjs.com', // Default public PeerJS server
@@ -61,7 +63,8 @@ function initializePeer(peerId) {
         path: '/',
         secure: true,
         // key: 'peerjs', // Default key for public server
-        debug: 2 // 0: Errors, 1: Warnings, 2: Info, 3: Verbose
+        debug: 2, // 0: Errors, 1: Warnings, 2: Info, 3: Verbose
+        wrtc: wrtc // Provide the wrtc implementation for Node.js
     };
 
     peer = new Peer(peerId, peerJsOptions);
@@ -71,6 +74,16 @@ function initializePeer(peerId) {
         console.log(`[System] PeerJS connection open. Your Peer ID: ${id}`);
         console.log(`          Your K(addr): ${MY_DISPLAY_ADDR}`);
         updateGroupKey(); // Initial key
+
+        // Auto-connect if targetPeerId was provided via command line
+        if (targetPeerId) {
+            console.log(`[System] Auto-connecting to ${targetPeerId} from command line...`);
+            const conn = peer.connect(targetPeerId, {
+                reliable: true,
+            });
+            setupConnectionHandlers(conn);
+        }
+
         promptUser(); // Start accepting user input
     });
 
@@ -246,14 +259,14 @@ rl.on('close', () => {
 });
 
 // --- Initialization ---
-function main() {
+function main(targetPeerId = null) { // <-- Add targetPeerId argument
     const {
         display,
         peerId
     } = generateKAddr();
     MY_DISPLAY_ADDR = display;
     // Use generated ID or allow override via args later?
-    initializePeer(peerId);
+    initializePeer(peerId, targetPeerId); // <-- Pass targetPeerId
 }
 
 // Helper for sorting keys
@@ -261,4 +274,31 @@ function sorted(arr) {
     return [...arr].sort();
 }
 
-main();
+// --- Argument Parsing & Start --- //
+function parseArgs() {
+    const args = process.argv.slice(2); // Skip 'node' and script path
+    let targetPeerId = null;
+    const connectIndex = args.indexOf('--connect');
+
+    if (connectIndex !== -1 && args.length > connectIndex + 1) {
+        targetPeerId = args[connectIndex + 1];
+        // Remove K() or K prefix if present, as PeerJS IDs don't use it
+        if (targetPeerId.startsWith('K(') && targetPeerId.endsWith(')')) {
+            targetPeerId = targetPeerId.substring(2, targetPeerId.length - 1);
+        } else if (targetPeerId.startsWith('K')) {
+            targetPeerId = targetPeerId.substring(1);
+        }
+        // Basic validation: PeerJS IDs usually don't look like IP addresses
+        // This is a weak check, PeerJS IDs can be varied.
+        // A better approach might be needed if K(addr) format needs direct mapping.
+        // For now, we assume the user provides the actual PeerJS ID.
+        console.log(`[System] Target Peer ID from args: ${targetPeerId}`);
+    }
+    return targetPeerId;
+}
+
+const targetPeerIdFromArgs = parseArgs();
+main(targetPeerIdFromArgs); // <-- Pass parsed target ID to main
+
+// Remove the duplicate call below
+// main();
