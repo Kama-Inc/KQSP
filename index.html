@@ -71,8 +71,10 @@
   <label>Message:</label>
   <div class="row">
     <input type="text" id="msg-input" placeholder="Type a message…">
+    <button id="record-btn">🎤</button> <!-- Record button -->
     <button id="send-btn" disabled>Send</button>
   </div>
+  <div id="record-status" style="font-size:0.8em; color:grey; margin-top:-0.5em;"></div> <!-- Recording status -->
 
   <label>File (optional password):</label>
   <input type="file" id="file-input">
@@ -109,6 +111,68 @@
       body.classList.toggle('dark-mode', dark);
       themeBtn.textContent = dark ? '☀️' : '🌙';
     };
+
+    // --- Voice Recording Logic ---
+    const recordBtn = document.getElementById('record-btn');
+    const recordStatus = document.getElementById('record-status');
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    recordBtn.onclick = async () => {
+      if (isRecording) {
+        // Stop recording
+        mediaRecorder.stop();
+        recordBtn.textContent = '🎤';
+        recordStatus.textContent = '';
+        isRecording = false;
+      } else {
+        // Start recording
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+
+          mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // or 'audio/ogg' etc.
+            audioChunks = []; // Reset chunks
+            sendAudio(audioBlob);
+            // Stop microphone tracks
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          audioChunks = []; // Clear previous chunks
+          mediaRecorder.start();
+          recordBtn.textContent = '🛑'; // Stop icon
+          recordStatus.textContent = 'Recording...';
+          isRecording = true;
+
+        } catch (err) {
+          console.error("Error accessing microphone:", err);
+          alert("Could not access microphone. Please ensure permission is granted.");
+          recordStatus.textContent = 'Mic access error.';
+        }
+      }
+    };
+
+    function sendAudio(blob) {
+      if (!conns.some(c => c.open)) {
+        alert('No active connections to send audio.');
+        return;
+      }
+      // Note: Sending raw blob. Encryption could be added here.
+      const payload = {
+        type: 'audio',
+        from: `K(${window.__KQSP.display})`,
+        data: blob
+      };
+      conns.filter(c => c.open).forEach(c => c.send(payload));
+      appendAudio(blob, 'You'); // Display locally
+      alert('Voice message sent.');
+    }
 
     // --- PeerJS & group key ---
     const peer = new Peer(window.__KQSP.id);
@@ -195,6 +259,10 @@
             makeDownload(decAll, data.filename);
           }
         }
+        else if (data.type === 'audio') {
+          // Received an audio blob
+          appendAudio(data.data, data.from);
+        }
       });
       c.on('close', ()=>{
         alert('Peer left: '+c.peer);
@@ -214,6 +282,19 @@
       msg.appendChild(document.createElement('br'));
     }
 
+    function appendAudio(blob, from) {
+      const audioUrl = URL.createObjectURL(blob);
+      const audioElement = document.createElement('audio');
+      audioElement.controls = true;
+      audioElement.src = audioUrl;
+
+      const container = document.createElement('div');
+      container.textContent = `${from}: `;
+      container.appendChild(audioElement);
+
+      document.getElementById('messages').appendChild(container);
+    }
+
     function append(text){
       const d=document.createElement('div');
       d.textContent=text;
@@ -231,10 +312,470 @@
         from:`K(${window.__KQSP.display})`,
         text:String.fromCharCode(...enc)
       };
+
+    // --- Voice Recording Logic ---
+    const recordBtn = document.getElementById('record-btn');
+    const recordStatus = document.getElementById('record-status');
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    recordBtn.onclick = async () => {
+      if (isRecording) {
+        // Stop recording
+        mediaRecorder.stop();
+        recordBtn.textContent = '🎤';
+        recordStatus.textContent = '';
+        isRecording = false;
+      } else {
+        // Start recording
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+
+          mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // or 'audio/ogg' etc.
+            audioChunks = []; // Reset chunks
+            sendAudio(audioBlob);
+            // Stop microphone tracks
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          audioChunks = []; // Clear previous chunks
+          mediaRecorder.start();
+          recordBtn.textContent = '🛑'; // Stop icon
+          recordStatus.textContent = 'Recording...';
+          isRecording = true;
+
+        } catch (err) {
+          console.error("Error accessing microphone:", err);
+          alert("Could not access microphone. Please ensure permission is granted.");
+          recordStatus.textContent = 'Mic access error.';
+        }
+      }
+    };
+
+    function sendAudio(blob) {
+      if (!conns.some(c => c.open)) {
+        alert('No active connections to send audio.');
+        return;
+      }
+      // Note: Sending raw blob. Encryption could be added here.
+      const payload = {
+        type: 'audio',
+        from: `K(${window.__KQSP.display})`,
+        data: blob
+      };
+      conns.filter(c => c.open).forEach(c => c.send(payload));
+      appendAudio(blob, 'You'); // Display locally
+      alert('Voice message sent.');
+    }
       conns.filter(c=>c.open).forEach(c=>c.send(payload));
       append('You: '+txt);
       document.getElementById('msg-input').value='';
     };
+
+    // --- Voice Recording Logic ---
+    const recordBtn = document.getElementById('record-btn');
+    const recordStatus = document.getElementById('record-status');
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    recordBtn.onclick = async () => {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('getUserMedia not supported on your browser!');
+        recordStatus.textContent = 'Browser not supported.';
+        return;
+      }
+      if (isRecording) {
+        // Stop recording
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        recordBtn.textContent = '🎤';
+        recordStatus.textContent = '';
+        isRecording = false;
+      } else {
+        // Start recording
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+
+          mediaRecorder.ondataavailable = event => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
+          };
+
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+            audioChunks = []; // Reset chunks
+            if (audioBlob.size > 0) {
+                sendAudio(audioBlob);
+            } else {
+                console.log("No audio data recorded.");
+            }
+            // Stop microphone tracks
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          mediaRecorder.onerror = (event) => {
+            console.error(`MediaRecorder error: ${event.error}`);
+            alert(`Recording error: ${event.error.name}`);
+            recordBtn.textContent = '🎤';
+            recordStatus.textContent = 'Recording error.';
+            isRecording = false;
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          audioChunks = []; // Clear previous chunks
+          mediaRecorder.start();
+          recordBtn.textContent = '🛑'; // Stop icon
+          recordStatus.textContent = 'Recording...';
+          isRecording = true;
+
+        } catch (err) {
+          console.error("Error accessing microphone:", err);
+          alert("Could not access microphone. Please ensure permission is granted and no other app is using it.");
+          recordStatus.textContent = 'Mic access error.';
+          isRecording = false; // Ensure state is reset
+        }
+      }
+    };
+
+    function sendAudio(blob) {
+      if (!conns.some(c => c.open)) {
+        alert('No active connections to send audio.');
+        return;
+      }
+      // Note: Sending raw blob. Encryption could be added here similar to text/file.
+      const payload = {
+        type: 'audio',
+        from: `K(${window.__KQSP.display})`,
+        mimeType: blob.type,
+        data: blob // PeerJS handles Blob directly
+      };
+      let sent = false;
+      conns.filter(c => c.open).forEach(c => {
+          try {
+              c.send(payload);
+              sent = true;
+          } catch (err) {
+              console.error(`Failed to send audio to ${c.peer}:`, err);
+              alert(`Failed to send audio to ${c.peer}. Connection might be unstable.`);
+          }
+      });
+      if (sent) {
+        appendAudio(blob, 'You'); // Display locally
+        // alert('Voice message sent.'); // Maybe too intrusive, status is enough
+        recordStatus.textContent = 'Voice message sent.';
+        setTimeout(() => { recordStatus.textContent = ''; }, 2000); // Clear status after 2s
+      }
+    }
+
+    // --- PeerJS & group key ---
+    const peer = new Peer(window.__KQSP.id);
+    const conns = [], sendBtn = document.getElementById('send-btn'),
+          sendFileBtn = document.getElementById('send-file-btn');
+    let groupKey;
+
+    peer.on('open', ()=>updateGroupKey());
+    peer.on('error', e=>alert('PeerJS error: '+e));
+    peer.on('connection', conn=>{
+      conns.push(conn);
+      conn.on('open', ()=>{
+        alert('User joined: '+conn.peer);
+        setupConnection(conn);
+        updateGroupKey();
+        updateButtons();
+      });
+    });
+
+    document.getElementById('connect-btn').onclick = connectToPeers;
+    function connectToPeers(){
+      const raws = document.getElementById('peer-input').value;
+      const ids = raws.split(',')
+        .map(s=>s.trim().replace(/^K\(|\)$/g,''))
+        .filter(Boolean);
+      if(!ids.length) return alert('Enter at least one K(...)');
+      ids.forEach(raw=>{
+        const pid = raw.replace(/\./g,'-');
+        const c = peer.connect(pid);
+        conns.push(c);
+        c.on('open', ()=>{
+          alert('Connected to: '+raw);
+          setupConnection(c);
+          updateGroupKey();
+          updateButtons();
+        });
+        c.on('error', e=>alert('Connection error: '+e));
+      });
+    }
+
+    function updateButtons(){
+      const ok = conns.some(c=>c.open);
+      sendBtn.disabled = sendFileBtn.disabled = !ok;
+    }
+
+    async function updateGroupKey(){
+      const ids = [peer.id, ...conns.filter(c=>c.open).map(c=>c.peer)]
+                   .filter((v,i,a)=>a.indexOf(v)===i).sort();
+      const buf = await crypto.subtle.digest('SHA-256',
+        new TextEncoder().encode(JSON.stringify(ids)));
+      groupKey = new Uint8Array(buf);
+    }
+
+    function setupConnection(c){
+      c.on('data', async data=>{
+        if(data.type==='text'){
+          const enc = Uint8Array.from(data.text.split('').map(ch=>ch.charCodeAt(0)));
+          const dec = enc.map((b,i)=>b^groupKey[i%groupKey.length]);
+          append(`${data.from}: ${new TextDecoder().decode(dec)}`);
+        }
+        else if(data.type==='file'){
+          alert(`File from ${data.from}: ${data.filename}`);
+          let keyBytes = groupKey;
+          if(data.protected){
+            while(true){
+              const pwd = prompt(`Enter password for "${data.filename}":`);
+              if(pwd===null) return;
+              const buf = await crypto.subtle.digest('SHA-256',
+                new TextEncoder().encode(pwd));
+              keyBytes = new Uint8Array(buf);
+              const encAll = new Uint8Array(data.data);
+              const decAll = encAll.map((b,i)=>b^keyBytes[i%keyBytes.length]);
+              const header = new TextDecoder().decode(decAll.slice(0,4));
+              if(header==='KQSP'){
+                makeDownload(decAll.slice(4), data.filename);
+                break;
+              } else {
+                alert('Wrong password—please try again.');
+              }
+            }
+          } else {
+            const encAll = new Uint8Array(data.data);
+            const decAll = encAll.map((b,i)=>b^keyBytes[i%keyBytes.length]);
+            makeDownload(decAll, data.filename);
+          }
+        }
+        else if (data.type === 'audio') {
+          // Received an audio blob
+          // PeerJS might automatically convert Blob to ArrayBuffer on receive, need to reconstruct
+          let audioBlob;
+          if (data.data instanceof Blob) {
+            audioBlob = data.data;
+          } else if (data.data instanceof ArrayBuffer) {
+            audioBlob = new Blob([data.data], { type: data.mimeType || 'audio/webm' });
+          } else {
+            console.error('Received unknown audio data type:', data.data);
+            return;
+          }
+          if (audioBlob.size > 0) {
+              appendAudio(audioBlob, data.from);
+          } else {
+              console.log(`Received empty audio blob from ${data.from}`);
+          }
+        }
+      });
+      c.on('close', ()=>{
+        alert('Peer left: '+c.peer);
+        updateGroupKey();
+        updateButtons();
+      });
+    }
+
+    function makeDownload(bytes, filename){
+      const blob = new Blob([bytes],{type:'application/octet-stream'});
+      const a = document.createElement('a');
+      a.download = filename;
+      a.href = URL.createObjectURL(blob);
+      a.textContent = `Download ${filename}`;
+      const msg = document.getElementById('messages');
+      msg.appendChild(a);
+      msg.appendChild(document.createElement('br'));
+    }
+
+    function appendAudio(blob, from) {
+      try {
+        const audioUrl = URL.createObjectURL(blob);
+        const audioElement = document.createElement('audio');
+        audioElement.controls = true;
+        audioElement.src = audioUrl;
+        audioElement.onloadedmetadata = () => {
+            // Optional: Revoke URL once not needed, but keep for playback
+            // URL.revokeObjectURL(audioUrl);
+        };
+        audioElement.onerror = (e) => {
+            console.error("Error loading audio element:", e);
+            container.textContent = `${from}: [Error loading audio]`;
+        };
+
+        const container = document.createElement('div');
+        container.style.marginTop = '0.5em';
+        const label = document.createElement('span');
+        label.textContent = `${from}: `;
+        container.appendChild(label);
+        container.appendChild(audioElement);
+
+        const messagesDiv = document.getElementById('messages');
+        messagesDiv.appendChild(container);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight; // Scroll to bottom
+      } catch (err) {
+          console.error("Error creating audio element:", err);
+          append(`${from}: [Error displaying audio]`);
+      }
+    }
+
+    function append(text){
+      const d=document.createElement('div');
+      d.textContent=text;
+      document.getElementById('messages').appendChild(d);
+    }
+
+    // --- Send text ---
+    sendBtn.onclick = ()=>{
+      const txt = document.getElementById('msg-input').value;
+      if(!txt) return;
+      const enc = new TextEncoder().encode(txt)
+        .map((b,i)=>b^groupKey[i%groupKey.length]);
+      const payload = {
+        type:'text',
+        from:`K(${window.__KQSP.display})`,
+        text:String.fromCharCode(...enc)
+      };
+
+    // --- Voice Recording Logic ---
+    const recordBtn = document.getElementById('record-btn');
+    const recordStatus = document.getElementById('record-status');
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    recordBtn.onclick = async () => {
+      if (isRecording) {
+        // Stop recording
+        mediaRecorder.stop();
+        recordBtn.textContent = '🎤';
+        recordStatus.textContent = '';
+        isRecording = false;
+      } else {
+        // Start recording
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+
+          mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // or 'audio/ogg' etc.
+            audioChunks = []; // Reset chunks
+            sendAudio(audioBlob);
+            // Stop microphone tracks
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          audioChunks = []; // Clear previous chunks
+          mediaRecorder.start();
+          recordBtn.textContent = '🛑'; // Stop icon
+          recordStatus.textContent = 'Recording...';
+          isRecording = true;
+
+        } catch (err) {
+          console.error("Error accessing microphone:", err);
+          alert("Could not access microphone. Please ensure permission is granted.");
+          recordStatus.textContent = 'Mic access error.';
+        }
+      }
+    };
+
+    function sendAudio(blob) {
+      if (!conns.some(c => c.open)) {
+        alert('No active connections to send audio.');
+        return;
+      }
+      // Note: Sending raw blob. Encryption could be added here.
+      const payload = {
+        type: 'audio',
+        from: `K(${window.__KQSP.display})`,
+        data: blob
+      };
+      conns.filter(c => c.open).forEach(c => c.send(payload));
+      appendAudio(blob, 'You'); // Display locally
+      alert('Voice message sent.');
+    }
+      conns.filter(c=>c.open).forEach(c=>c.send(payload));
+      append('You: '+txt);
+      document.getElementById('msg-input').value='';
+    };
+
+    // --- Voice Recording Logic ---
+    const recordBtn = document.getElementById('record-btn');
+    const recordStatus = document.getElementById('record-status');
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    recordBtn.onclick = async () => {
+      if (isRecording) {
+        // Stop recording
+        mediaRecorder.stop();
+        recordBtn.textContent = '🎤';
+        recordStatus.textContent = '';
+        isRecording = false;
+      } else {
+        // Start recording
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+
+          mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // or 'audio/ogg' etc.
+            audioChunks = []; // Reset chunks
+            sendAudio(audioBlob);
+            // Stop microphone tracks
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          audioChunks = []; // Clear previous chunks
+          mediaRecorder.start();
+          recordBtn.textContent = '🛑'; // Stop icon
+          recordStatus.textContent = 'Recording...';
+          isRecording = true;
+
+        } catch (err) {
+          console.error("Error accessing microphone:", err);
+          alert("Could not access microphone. Please ensure permission is granted.");
+          recordStatus.textContent = 'Mic access error.';
+        }
+      }
+    };
+
+    function sendAudio(blob) {
+      if (!conns.some(c => c.open)) {
+        alert('No active connections to send audio.');
+        return;
+      }
+      // Note: Sending raw blob. Encryption could be added here.
+      const payload = {
+        type: 'audio',
+        from: `K(${window.__KQSP.display})`,
+        data: blob
+      };
+      conns.filter(c => c.open).forEach(c => c.send(payload));
+      appendAudio(blob, 'You'); // Display locally
+      alert('Voice message sent.');
+    }
 
     // --- Send file with optional password ---
     sendFileBtn.onclick = async ()=>{
@@ -264,11 +805,197 @@
           protected:protectedFlag,
           data:encAll.buffer
         };
+
+    // --- Voice Recording Logic ---
+    const recordBtn = document.getElementById('record-btn');
+    const recordStatus = document.getElementById('record-status');
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    recordBtn.onclick = async () => {
+      if (isRecording) {
+        // Stop recording
+        mediaRecorder.stop();
+        recordBtn.textContent = '🎤';
+        recordStatus.textContent = '';
+        isRecording = false;
+      } else {
+        // Start recording
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+
+          mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // or 'audio/ogg' etc.
+            audioChunks = []; // Reset chunks
+            sendAudio(audioBlob);
+            // Stop microphone tracks
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          audioChunks = []; // Clear previous chunks
+          mediaRecorder.start();
+          recordBtn.textContent = '🛑'; // Stop icon
+          recordStatus.textContent = 'Recording...';
+          isRecording = true;
+
+        } catch (err) {
+          console.error("Error accessing microphone:", err);
+          alert("Could not access microphone. Please ensure permission is granted.");
+          recordStatus.textContent = 'Mic access error.';
+        }
+      }
+    };
+
+    function sendAudio(blob) {
+      if (!conns.some(c => c.open)) {
+        alert('No active connections to send audio.');
+        return;
+      }
+      // Note: Sending raw blob. Encryption could be added here.
+      const payload = {
+        type: 'audio',
+        from: `K(${window.__KQSP.display})`,
+        data: blob
+      };
+      conns.filter(c => c.open).forEach(c => c.send(payload));
+      appendAudio(blob, 'You'); // Display locally
+      alert('Voice message sent.');
+    }
         conns.filter(c=>c.open).forEach(c=>c.send(payload));
         alert('Encrypted file sent: '+file.name);
       };
+
+    // --- Voice Recording Logic ---
+    const recordBtn = document.getElementById('record-btn');
+    const recordStatus = document.getElementById('record-status');
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    recordBtn.onclick = async () => {
+      if (isRecording) {
+        // Stop recording
+        mediaRecorder.stop();
+        recordBtn.textContent = '🎤';
+        recordStatus.textContent = '';
+        isRecording = false;
+      } else {
+        // Start recording
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+
+          mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // or 'audio/ogg' etc.
+            audioChunks = []; // Reset chunks
+            sendAudio(audioBlob);
+            // Stop microphone tracks
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          audioChunks = []; // Clear previous chunks
+          mediaRecorder.start();
+          recordBtn.textContent = '🛑'; // Stop icon
+          recordStatus.textContent = 'Recording...';
+          isRecording = true;
+
+        } catch (err) {
+          console.error("Error accessing microphone:", err);
+          alert("Could not access microphone. Please ensure permission is granted.");
+          recordStatus.textContent = 'Mic access error.';
+        }
+      }
+    };
+
+    function sendAudio(blob) {
+      if (!conns.some(c => c.open)) {
+        alert('No active connections to send audio.');
+        return;
+      }
+      // Note: Sending raw blob. Encryption could be added here.
+      const payload = {
+        type: 'audio',
+        from: `K(${window.__KQSP.display})`,
+        data: blob
+      };
+      conns.filter(c => c.open).forEach(c => c.send(payload));
+      appendAudio(blob, 'You'); // Display locally
+      alert('Voice message sent.');
+    }
       reader.readAsArrayBuffer(file);
     };
+
+    // --- Voice Recording Logic ---
+    const recordBtn = document.getElementById('record-btn');
+    const recordStatus = document.getElementById('record-status');
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    recordBtn.onclick = async () => {
+      if (isRecording) {
+        // Stop recording
+        mediaRecorder.stop();
+        recordBtn.textContent = '🎤';
+        recordStatus.textContent = '';
+        isRecording = false;
+      } else {
+        // Start recording
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+
+          mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // or 'audio/ogg' etc.
+            audioChunks = []; // Reset chunks
+            sendAudio(audioBlob);
+            // Stop microphone tracks
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          audioChunks = []; // Clear previous chunks
+          mediaRecorder.start();
+          recordBtn.textContent = '🛑'; // Stop icon
+          recordStatus.textContent = 'Recording...';
+          isRecording = true;
+
+        } catch (err) {
+          console.error("Error accessing microphone:", err);
+          alert("Could not access microphone. Please ensure permission is granted.");
+          recordStatus.textContent = 'Mic access error.';
+        }
+      }
+    };
+
+    function sendAudio(blob) {
+      if (!conns.some(c => c.open)) {
+        alert('No active connections to send audio.');
+        return;
+      }
+      // Note: Sending raw blob. Encryption could be added here.
+      const payload = {
+        type: 'audio',
+        from: `K(${window.__KQSP.display})`,
+        data: blob
+      };
+      conns.filter(c => c.open).forEach(c => c.send(payload));
+      appendAudio(blob, 'You'); // Display locally
+      alert('Voice message sent.');
+    }
 
     // --- QR Scanner logic ---
     let qrScanner = null;
@@ -324,6 +1051,68 @@
       });
       scanBtn.textContent = 'Stop Scan';
     };
+
+    // --- Voice Recording Logic ---
+    const recordBtn = document.getElementById('record-btn');
+    const recordStatus = document.getElementById('record-status');
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    recordBtn.onclick = async () => {
+      if (isRecording) {
+        // Stop recording
+        mediaRecorder.stop();
+        recordBtn.textContent = '🎤';
+        recordStatus.textContent = '';
+        isRecording = false;
+      } else {
+        // Start recording
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+
+          mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // or 'audio/ogg' etc.
+            audioChunks = []; // Reset chunks
+            sendAudio(audioBlob);
+            // Stop microphone tracks
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          audioChunks = []; // Clear previous chunks
+          mediaRecorder.start();
+          recordBtn.textContent = '🛑'; // Stop icon
+          recordStatus.textContent = 'Recording...';
+          isRecording = true;
+
+        } catch (err) {
+          console.error("Error accessing microphone:", err);
+          alert("Could not access microphone. Please ensure permission is granted.");
+          recordStatus.textContent = 'Mic access error.';
+        }
+      }
+    };
+
+    function sendAudio(blob) {
+      if (!conns.some(c => c.open)) {
+        alert('No active connections to send audio.');
+        return;
+      }
+      // Note: Sending raw blob. Encryption could be added here.
+      const payload = {
+        type: 'audio',
+        from: `K(${window.__KQSP.display})`,
+        data: blob
+      };
+      conns.filter(c => c.open).forEach(c => c.send(payload));
+      appendAudio(blob, 'You'); // Display locally
+      alert('Voice message sent.');
+    }
   </script>
 </body>
 </html>
