@@ -1,739 +1,570 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Kazan's Quick Share Protocol (KQSP)</title>
-  <style>
-    :root {
-      --bg: #f5f5f5; --fg: #222;
-      --input-bg: #fff; --input-fg: #222;
-      --border: #ccc; --accent: #0066cc;
-    }
-    .dark-mode {
-      --bg: #222; --fg: #f5f5f5;
-      --input-bg: #333; --input-fg: #f5f5f5;
-      --border: #555; --accent: #66aaff;
-    }
-    * { box-sizing: border-box; }
-    body {
-      background: var(--bg); color: var(--fg);
-      font-family: sans-serif; max-width: 600px;
-      margin: 2em auto; transition: .3s;
-    }
-    header { display:flex; justify-content:space-between; align-items:center; }
-    h1 { margin:0; font-size:1.5em; }
-    button,input {
-      font-size:1em; margin:.5em 0; padding:.5em;
-      width:100%; background:var(--input-bg);
-      color:var(--input-fg); border:1px solid var(--border);
-      border-radius:4px; transition:.3s;
-    }
-    button { background:var(--accent); color:#fff; cursor:pointer; }
-    button:disabled { opacity:.5; cursor:not-allowed; }
-    #messages {
-      border:1px solid var(--border); padding:1em;
-      height:200px; overflow-y:auto; background:var(--input-bg);
-    }
-    #kaddr { font-size:.9em; color:var(--accent); word-break:break-all; }
-    #qrcode, #qr-reader { margin:.5em 0; }
-    .row { display:flex; gap:.5em; }
-    .row>* { flex:1; }
-    @media (max-width: 600px) {
-      body { margin: 1em; }
-      header { flex-direction: column; align-items: flex-start; gap: 0.5em; }
-      h1 { font-size: 1.3em; }
-      button, input { font-size: 0.9em; padding: 0.6em; }
-      .row { flex-direction: column; }
-      #messages { height: 150px; }
-      #qrcode { text-align: center; }
-      #qrcode img { width: 100px !important; height: 100px !important; margin: auto; }
-      #qr-reader { width: 100%; }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <title>Kazan's Quick Share Protocol (KQSP)</title>
+    <style>
+        :root {
+            --bg: #f5f5f5;
+            --fg: #222;
+            --input-bg: #fff;
+            --input-fg: #222;
+            --border: #ccc;
+            --accent: #0066cc;
+        }
+
+        .dark-mode {
+            --bg: #222;
+            --fg: #f5f5f5;
+            --input-bg: #333;
+            --input-fg: #f5f5f5;
+            --border: #555;
+            --accent: #66aaff;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: sans-serif;
+            max-width: 600px;
+            margin: 2em auto;
+            transition: .3s;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+
+        button,
+        input {
+            font-size: 1em;
+            margin: .5em 0;
+            padding: .5em;
+            width: 100%;
+            background: var(--input-bg);
+            color: var(--input-fg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            transition: .3s;
+        }
+
+        button {
+            background: var(--accent);
+            color: #fff;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+        }
+
+        #messages {
+            border: 1px solid var(--border);
+            padding: 1em;
+            height: 200px;
+            overflow-y: auto;
+            background: var(--input-bg);
+        }
+
+        #kaddr {
+            font-size: .9em;
+            color: var(--accent);
+            word-break: break-all;
+        }
+
+        #qrcode,
+        #qr-reader {
+            margin: .5em 0;
+        }
+
+        .row {
+            display: flex;
+            gap: .5em;
+        }
+
+        .row>* {
+            flex: 1;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                margin: 1em;
+            }
+
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5em;
+            }
+
+            h1 {
+                font-size: 1.3em;
+            }
+
+            button,
+            input {
+                font-size: 0.9em;
+                padding: 0.6em;
+            }
+
+            .row {
+                flex-direction: column;
+            }
+
+            #messages {
+                height: 150px;
+            }
+
+            #qrcode {
+                text-align: center;
+            }
+
+            #qrcode img {
+                width: 100px !important;
+                height: 100px !important;
+                margin: auto;
+            }
+
+            #qr-reader {
+                width: 100%;
+            }
+        }
+    </style>
 </head>
+
 <body>
-  <header>
-    <h1>KQSP</h1>
-    <button id="theme-toggle">🌙</button>
-  </header>
+    <header>
+        <h1>KQSP</h1>
+        <button id="theme-toggle">🌙</button>
+    </header>
 
-  <p>Your Address: <strong id="kaddr">generating…</strong></p>
-  <div id="qrcode"></div>
+    <p>Your Address: <strong id="kaddr">generating…</strong></p>
+    <div id="qrcode"></div>
 
-  <label>Group Peers (comma-sep K(...) IDs):</label>
-  <input type="text" id="peer-input" placeholder="e.g. K(123.45.67.89), K(98.76.54.32)">
-  <div class="row">
-    <button id="connect-btn">Connect to Group</button>
-    <button id="scan-btn">Scan QR</button>
-  </div>
-  <div id="qr-reader" style="display:none;"></div>
+    <label>Group Peers (comma-sep K(...) IDs):</label>
+    <input type="text" id="peer-input" placeholder="e.g. K(123.45.67.89), K(98.76.54.32)">
+    <div class="row">
+        <button id="connect-btn">Connect to Group</button>
+        <button id="scan-btn">Scan QR</button>
+    </div>
+    <div id="qr-reader" style="display:none;"></div>
 
-  <label>Message:</label>
-  <div class="row">
-    <input type="text" id="msg-input" placeholder="Type a message…">
-    <button id="record-btn">🎤</button> <!-- Record button -->
-    <button id="send-btn" disabled>Send</button>
-  </div>
-  <div id="record-status" style="font-size:0.8em; color:grey; margin-top:-0.5em;"></div> <!-- Recording status -->
+    <label>Message:</label>
+    <div class="row">
+        <input type="text" id="msg-input" placeholder="Type a message…">
+        <button id="record-btn">🎤</button> <!-- Record button -->
+        <button id="send-btn" disabled>Send</button>
+    </div>
+    <div id="record-status" style="font-size:0.8em; color:grey; margin-top:-0.5em;"></div> <!-- Recording status -->
 
-  <label>File (optional password):</label>
-  <input type="file" id="file-input">
-  <input type="password" id="file-password" placeholder="File password (optional)">
-  <button id="send-file-btn" disabled>Send File</button>
+    <label>File (optional password):</label>
+    <input type="file" id="file-input">
+    <input type="password" id="file-password" placeholder="File password (optional)">
+    <button id="send-file-btn" disabled>Send File</button>
 
-  <h2>Messages</h2>
-  <div id="messages"></div>
+    <h2>Messages</h2>
+    <div id="messages"></div>
 
-  <!-- PeerJS, QRCode.js, html5-qrcode -->
-  <script src="https://unpkg.com/peerjs@1.3.2/dist/peerjs.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script src="html5-qrcode.min.js"></script> <!-- Load locally -->
-  <script>
-    // --- Immediate K(addr) generation & QR render ---
-    (function(){
-      const rnd = ()=>Math.floor(Math.random()*256);
-      const parts = [rnd(),rnd(),rnd(),rnd()];
-      const display = parts.join('.');
-      const id      = parts.join('-');
-      window.__KQSP = { display, id };
-      document.getElementById('kaddr').textContent = 'K('+display+')';
-      new QRCode(document.getElementById('qrcode'), {
-        text: 'K('+display+')',
-        width:128, height:128
-      });
-    })();
+    <!-- PeerJS, QRCode.js, html5-qrcode -->
+    <script src="https://unpkg.com/peerjs@1.3.2/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="html5-qrcode.min.js"></script> <!-- Load locally -->
+    <script>
+        // --- Immediate K(addr) generation & QR render ---
+        (function() {
+            const rnd = () => Math.floor(Math.random() * 256);
+            const parts = [rnd(), rnd(), rnd(), rnd()];
+            const display = parts.join('.');
+            const id = parts.join('-');
+            window.__KQSP = {
+                display,
+                id
+            };
+            document.getElementById('kaddr').textContent = 'K(' + display + ')';
+            new QRCode(document.getElementById('qrcode'), {
+                text: 'K(' + display + ')',
+                width: 128,
+                height: 128
+            });
+        })();
 
-    // --- Dark mode toggle ---
-    const themeBtn = document.getElementById('theme-toggle'), body = document.body;
-    let dark = false;
-    themeBtn.onclick = ()=>{
-      dark = !dark;
-      body.classList.toggle('dark-mode', dark);
-      themeBtn.textContent = dark ? '☀️' : '🌙';
-    };
+        // --- Dark mode toggle ---
+        const themeBtn = document.getElementById('theme-toggle'),
+            body = document.body;
+        let dark = false;
+        themeBtn.onclick = () => {
+            dark = !dark;
+            body.classList.toggle('dark-mode', dark);
+            themeBtn.textContent = dark ? '☀️' : '🌙';
+        };
 
 
 
-    // --- PeerJS & group key ---
-    const peer = new Peer(window.__KQSP.id);
-    const conns = [], sendBtn = document.getElementById('send-btn'),
-          sendFileBtn = document.getElementById('send-file-btn');
-    let groupKey;
+        // --- PeerJS & group key ---
+        const peer = new Peer(window.__KQSP.id);
+        const conns = [],
+            sendBtn = document.getElementById('send-btn'),
+            sendFileBtn = document.getElementById('send-file-btn');
+        let groupKey;
 
-    peer.on('open', ()=>updateGroupKey());
-    peer.on('error', e=>alert('PeerJS error: '+e));
-    peer.on('connection', conn=>{
-      conns.push(conn);
-      conn.on('open', ()=>{
-        alert('User joined: '+conn.peer);
-        setupConnection(conn);
-        updateGroupKey();
-        updateButtons();
-      });
-    });
-
-    document.getElementById('connect-btn').onclick = connectToPeers;
-    function connectToPeers(){
-      const raws = document.getElementById('peer-input').value;
-      const ids = raws.split(',')
-        .map(s=>s.trim().replace(/^K\(|\)$/g,''))
-        .filter(Boolean);
-      if(!ids.length) return alert('Enter at least one K(...)');
-      ids.forEach(raw=>{
-        const pid = raw.replace(/\./g,'-');
-        const c = peer.connect(pid);
-        conns.push(c);
-        c.on('open', ()=>{
-          alert('Connected to: '+raw);
-          setupConnection(c);
-          updateGroupKey();
-          updateButtons();
+        peer.on('open', () => updateGroupKey());
+        peer.on('error', e => alert('PeerJS error: ' + e));
+        peer.on('connection', conn => {
+            conns.push(conn);
+            conn.on('open', () => {
+                alert('User joined: ' + conn.peer);
+                setupConnection(conn);
+                updateGroupKey();
+                updateButtons();
+            });
         });
-        c.on('error', e=>alert('Connection error: '+e));
-      });
-    }
 
-    function updateButtons(){
-      const ok = conns.some(c=>c.open);
-      sendBtn.disabled = sendFileBtn.disabled = !ok;
-    }
+        document.getElementById('connect-btn').onclick = connectToPeers;
 
-    async function updateGroupKey(){
-      const ids = [peer.id, ...conns.filter(c=>c.open).map(c=>c.peer)]
-                   .filter((v,i,a)=>a.indexOf(v)===i).sort();
-      const buf = await crypto.subtle.digest('SHA-256',
-        new TextEncoder().encode(JSON.stringify(ids)));
-      groupKey = new Uint8Array(buf);
-    }
-
-    function setupConnection(c){
-      c.on('data', async data=>{
-        if(data.type==='text'){
-          const enc = Uint8Array.from(data.text.split('').map(ch=>ch.charCodeAt(0)));
-          const dec = enc.map((b,i)=>b^groupKey[i%groupKey.length]);
-          append(`${data.from}: ${new TextDecoder().decode(dec)}`);
+        function connectToPeers() {
+            const raws = document.getElementById('peer-input').value;
+            const ids = raws.split(',')
+                .map(s => s.trim().replace(/^K\(|\)$/g, ''))
+                .filter(Boolean);
+            if (!ids.length) return alert('Enter at least one K(...)');
+            ids.forEach(raw => {
+                const pid = raw.replace(/\./g, '-');
+                const c = peer.connect(pid);
+                conns.push(c);
+                c.on('open', () => {
+                    alert('Connected to: ' + raw);
+                    setupConnection(c);
+                    updateGroupKey();
+                    updateButtons();
+                });
+                c.on('error', e => alert('Connection error: ' + e));
+            });
         }
-        else if(data.type==='file'){
-          alert(`File from ${data.from}: ${data.filename}`);
-          let keyBytes = groupKey;
-          if(data.protected){
-            while(true){
-              const pwd = prompt(`Enter password for "${data.filename}":`);
-              if(pwd===null) return;
-              const buf = await crypto.subtle.digest('SHA-256',
-                new TextEncoder().encode(pwd));
-              keyBytes = new Uint8Array(buf);
-              const encAll = new Uint8Array(data.data);
-              const decAll = encAll.map((b,i)=>b^keyBytes[i%keyBytes.length]);
-              const header = new TextDecoder().decode(decAll.slice(0,4));
-              if(header==='KQSP'){
-                makeDownload(decAll.slice(4), data.filename);
-                break;
-              } else {
-                alert('Wrong password—please try again.');
-              }
+
+        function updateButtons() {
+            const ok = conns.some(c => c.open);
+            sendBtn.disabled = sendFileBtn.disabled = !ok;
+        }
+
+        async function updateGroupKey() {
+            const ids = [peer.id, ...conns.filter(c => c.open).map(c => c.peer)]
+                .filter((v, i, a) => a.indexOf(v) === i).sort();
+            const buf = await crypto.subtle.digest('SHA-256',
+                new TextEncoder().encode(JSON.stringify(ids)));
+            groupKey = new Uint8Array(buf);
+        }
+
+        function setupConnection(c) {
+            c.on('data', async data => {
+                if (data.type === 'text') {
+                    const enc = Uint8Array.from(data.text.split('').map(ch => ch.charCodeAt(0)));
+                    const dec = enc.map((b, i) => b ^ groupKey[i % groupKey.length]);
+                    append(`${data.from}: ${new TextDecoder().decode(dec)}`);
+                } else if (data.type === 'file') {
+                    alert(`File from ${data.from}: ${data.filename}`);
+                    let keyBytes = groupKey;
+                    if (data.protected) {
+                        while (true) {
+                            const pwd = prompt(`Enter password for "${data.filename}":`);
+                            if (pwd === null) return;
+                            const buf = await crypto.subtle.digest('SHA-256',
+                                new TextEncoder().encode(pwd));
+                            keyBytes = new Uint8Array(buf);
+                            const encAll = new Uint8Array(data.data);
+                            const decAll = encAll.map((b, i) => b ^ keyBytes[i % keyBytes.length]);
+                            const header = new TextDecoder().decode(decAll.slice(0, 4));
+                            if (header === 'KQSP') {
+                                makeDownload(decAll.slice(4), data.filename);
+                                break;
+                            } else {
+                                alert('Wrong password—please try again.');
+                            }
+                        }
+                    } else {
+                        const encAll = new Uint8Array(data.data);
+                        const decAll = encAll.map((b, i) => b ^ keyBytes[i % keyBytes.length]);
+                        makeDownload(decAll, data.filename);
+                    }
+                } else if (data.type === 'audio') {
+                    // Received an audio blob
+                    appendAudio(data.data, data.from);
+                }
+            });
+            c.on('close', () => {
+                alert('Peer left: ' + c.peer);
+                updateGroupKey();
+                updateButtons();
+            });
+        }
+
+        function makeDownload(bytes, filename) {
+            const blob = new Blob([bytes], {
+                type: 'application/octet-stream'
+            });
+            const a = document.createElement('a');
+            a.download = filename;
+            a.href = URL.createObjectURL(blob);
+            a.textContent = `Download ${filename}`;
+            const msg = document.getElementById('messages');
+            msg.appendChild(a);
+            msg.appendChild(document.createElement('br'));
+        }
+
+        function appendAudio(blob, from) {
+            const audioUrl = URL.createObjectURL(blob);
+            const audioElement = document.createElement('audio');
+            audioElement.controls = true;
+            audioElement.src = audioUrl;
+
+            const container = document.createElement('div');
+            container.textContent = `${from}: `;
+            container.appendChild(audioElement);
+
+            document.getElementById('messages').appendChild(container);
+        }
+
+        function append(text) {
+            const d = document.createElement('div');
+            d.textContent = text;
+            document.getElementById('messages').appendChild(d);
+        }
+
+        // --- Send text ---
+        sendBtn.onclick = () => {
+            const txt = document.getElementById('msg-input').value;
+            if (!txt) return;
+            const enc = new TextEncoder().encode(txt)
+                .map((b, i) => b ^ groupKey[i % groupKey.length]);
+            const payload = {
+                type: 'text',
+                from: `K(${window.__KQSP.display})`,
+                text: String.fromCharCode(...enc)
+            };
+
+            conns.filter(c => c.open).forEach(c => c.send(payload));
+            append('You: ' + txt);
+            document.getElementById('msg-input').value = '';
+        };
+
+
+        // --- Voice Recording Logic ---
+        const recordBtn = document.getElementById('record-btn');
+        const recordStatus = document.getElementById('record-status');
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+
+        recordBtn.onclick = async () => {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('getUserMedia not supported on your browser!');
+                recordStatus.textContent = 'Browser not supported.';
+                return;
             }
-          } else {
-            const encAll = new Uint8Array(data.data);
-            const decAll = encAll.map((b,i)=>b^keyBytes[i%keyBytes.length]);
-            makeDownload(decAll, data.filename);
-          }
-        }
-        else if (data.type === 'audio') {
-          // Received an audio blob
-          appendAudio(data.data, data.from);
-        }
-      });
-      c.on('close', ()=>{
-        alert('Peer left: '+c.peer);
-        updateGroupKey();
-        updateButtons();
-      });
-    }
-
-    function makeDownload(bytes, filename){
-      const blob = new Blob([bytes],{type:'application/octet-stream'});
-      const a = document.createElement('a');
-      a.download = filename;
-      a.href = URL.createObjectURL(blob);
-      a.textContent = `Download ${filename}`;
-      const msg = document.getElementById('messages');
-      msg.appendChild(a);
-      msg.appendChild(document.createElement('br'));
-    }
-
-    function appendAudio(blob, from) {
-      const audioUrl = URL.createObjectURL(blob);
-      const audioElement = document.createElement('audio');
-      audioElement.controls = true;
-      audioElement.src = audioUrl;
-
-      const container = document.createElement('div');
-      container.textContent = `${from}: `;
-      container.appendChild(audioElement);
-
-      document.getElementById('messages').appendChild(container);
-    }
-
-    function append(text){
-      const d=document.createElement('div');
-      d.textContent=text;
-      document.getElementById('messages').appendChild(d);
-    }
-
-    // --- Send text ---
-    sendBtn.onclick = ()=>{
-      const txt = document.getElementById('msg-input').value;
-      if(!txt) return;
-      const enc = new TextEncoder().encode(txt)
-        .map((b,i)=>b^groupKey[i%groupKey.length]);
-      const payload = {
-        type:'text',
-        from:`K(${window.__KQSP.display})`,
-        text:String.fromCharCode(...enc)
-      };
-
-      conns.filter(c=>c.open).forEach(c=>c.send(payload));
-      append('You: '+txt);
-      document.getElementById('msg-input').value='';
-    };
-
-
-    // --- Voice Recording Logic ---
-    const recordBtn = document.getElementById('record-btn');
-    const recordStatus = document.getElementById('record-status');
-    let mediaRecorder = null;
-    let audioChunks = [];
-    let isRecording = false;
-
-    recordBtn.onclick = async () => {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert('getUserMedia not supported on your browser!');
-        recordStatus.textContent = 'Browser not supported.';
-        return;
-      }
-      if (isRecording) {
-        // Stop recording
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
-        }
-        recordBtn.textContent = '🎤';
-        recordStatus.textContent = '';
-        isRecording = false;
-      } else {
-        // Start recording
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          mediaRecorder = new MediaRecorder(stream);
-
-          mediaRecorder.ondataavailable = event => {
-            if (event.data.size > 0) {
-                audioChunks.push(event.data);
-            }
-          };
-
-          mediaRecorder.onstop = () => {
-            const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-            audioChunks = []; // Reset chunks
-            if (audioBlob.size > 0) {
-                sendAudio(audioBlob);
+            if (isRecording) {
+                // Stop recording
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                    mediaRecorder.stop();
+                }
+                recordBtn.textContent = '🎤';
+                recordStatus.textContent = '';
+                isRecording = false;
             } else {
-                console.log("No audio data recorded.");
+                // Start recording
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        audio: true
+                    });
+                    mediaRecorder = new MediaRecorder(stream);
+
+                    mediaRecorder.ondataavailable = event => {
+                        if (event.data.size > 0) {
+                            audioChunks.push(event.data);
+                        }
+                    };
+
+                    mediaRecorder.onstop = () => {
+                        const audioBlob = new Blob(audioChunks, {
+                            type: mediaRecorder.mimeType || 'audio/webm'
+                        });
+                        audioChunks = []; // Reset chunks
+                        if (audioBlob.size > 0) {
+                            sendAudio(audioBlob);
+                        } else {
+                            console.log("No audio data recorded.");
+                        }
+                        // Stop microphone tracks
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+
+                    mediaRecorder.onerror = (event) => {
+                        console.error(`MediaRecorder error: ${event.error}`);
+                        alert(`Recording error: ${event.error.name}`);
+                        recordBtn.textContent = '🎤';
+                        recordStatus.textContent = 'Recording error.';
+                        isRecording = false;
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+
+                    audioChunks = []; // Clear previous chunks
+                    mediaRecorder.start();
+                    recordBtn.textContent = '🛑'; // Stop icon
+                    recordStatus.textContent = 'Recording...';
+                    isRecording = true;
+
+                } catch (err) {
+                    console.error("Error accessing microphone:", err);
+                    alert("Could not access microphone. Please ensure permission is granted and no other app is using it.");
+                    recordStatus.textContent = 'Mic access error.';
+                    isRecording = false; // Ensure state is reset
+                }
             }
-            // Stop microphone tracks
-            stream.getTracks().forEach(track => track.stop());
-          };
-
-          mediaRecorder.onerror = (event) => {
-            console.error(`MediaRecorder error: ${event.error}`);
-            alert(`Recording error: ${event.error.name}`);
-            recordBtn.textContent = '🎤';
-            recordStatus.textContent = 'Recording error.';
-            isRecording = false;
-            stream.getTracks().forEach(track => track.stop());
-          };
-
-          audioChunks = []; // Clear previous chunks
-          mediaRecorder.start();
-          recordBtn.textContent = '🛑'; // Stop icon
-          recordStatus.textContent = 'Recording...';
-          isRecording = true;
-
-        } catch (err) {
-          console.error("Error accessing microphone:", err);
-          alert("Could not access microphone. Please ensure permission is granted and no other app is using it.");
-          recordStatus.textContent = 'Mic access error.';
-          isRecording = false; // Ensure state is reset
-        }
-      }
-    };
-
-    function sendAudio(blob) {
-      if (!conns.some(c => c.open)) {
-        alert('No active connections to send audio.');
-        return;
-      }
-      // Note: Sending raw blob. Encryption could be added here similar to text/file.
-      const payload = {
-        type: 'audio',
-        from: `K(${window.__KQSP.display})`,
-        mimeType: blob.type,
-        data: blob // PeerJS handles Blob directly
-      };
-      let sent = false;
-      conns.filter(c => c.open).forEach(c => {
-          try {
-              c.send(payload);
-              sent = true;
-          } catch (err) {
-              console.error(`Failed to send audio to ${c.peer}:`, err);
-              alert(`Failed to send audio to ${c.peer}. Connection might be unstable.`);
-          }
-      });
-      if (sent) {
-        appendAudio(blob, 'You'); // Display locally
-        // alert('Voice message sent.'); // Maybe too intrusive, status is enough
-        recordStatus.textContent = 'Voice message sent.';
-        setTimeout(() => { recordStatus.textContent = ''; }, 2000); // Clear status after 2s
-      }
-    }
-
-
-
-    // --- PeerJS & group key ---
-    const peer = new Peer(window.__KQSP.id);
-    const conns = [], sendBtn = document.getElementById('send-btn'),
-          sendFileBtn = document.getElementById('send-file-btn');
-    let groupKey;
-
-    peer.on('open', ()=>updateGroupKey());
-    peer.on('error', e=>alert('PeerJS error: '+e));
-    peer.on('connection', conn=>{
-      conns.push(conn);
-      conn.on('open', ()=>{
-        alert('User joined: '+conn.peer);
-        setupConnection(conn);
-        updateGroupKey();
-        updateButtons();
-      });
-    });
-
-    document.getElementById('connect-btn').onclick = connectToPeers;
-    function connectToPeers(){
-      const raws = document.getElementById('peer-input').value;
-      const ids = raws.split(',')
-        .map(s=>s.trim().replace(/^K\(|\)$/g,''))
-        .filter(Boolean);
-      if(!ids.length) return alert('Enter at least one K(...)');
-      ids.forEach(raw=>{
-        const pid = raw.replace(/\./g,'-');
-        const c = peer.connect(pid);
-        conns.push(c);
-        c.on('open', ()=>{
-          alert('Connected to: '+raw);
-          setupConnection(c);
-          updateGroupKey();
-          updateButtons();
-        });
-        c.on('error', e=>alert('Connection error: '+e));
-      });
-    }
-
-    function updateButtons(){
-      const ok = conns.some(c=>c.open);
-      sendBtn.disabled = sendFileBtn.disabled = !ok;
-    }
-
-    async function updateGroupKey(){
-      const ids = [peer.id, ...conns.filter(c=>c.open).map(c=>c.peer)]
-                   .filter((v,i,a)=>a.indexOf(v)===i).sort();
-      const buf = await crypto.subtle.digest('SHA-256',
-        new TextEncoder().encode(JSON.stringify(ids)));
-      groupKey = new Uint8Array(buf);
-    }
-
-    function setupConnection(c){
-      c.on('data', async data=>{
-        if(data.type==='text'){
-          const enc = Uint8Array.from(data.text.split('').map(ch=>ch.charCodeAt(0)));
-          const dec = enc.map((b,i)=>b^groupKey[i%groupKey.length]);
-          append(`${data.from}: ${new TextDecoder().decode(dec)}`);
-        }
-        else if(data.type==='file'){
-          alert(`File from ${data.from}: ${data.filename}`);
-          let keyBytes = groupKey;
-          if(data.protected){
-            while(true){
-              const pwd = prompt(`Enter password for "${data.filename}":`);
-              if(pwd===null) return;
-              const buf = await crypto.subtle.digest('SHA-256',
-                new TextEncoder().encode(pwd));
-              keyBytes = new Uint8Array(buf);
-              const encAll = new Uint8Array(data.data);
-              const decAll = encAll.map((b,i)=>b^keyBytes[i%keyBytes.length]);
-              const header = new TextDecoder().decode(decAll.slice(0,4));
-              if(header==='KQSP'){
-                makeDownload(decAll.slice(4), data.filename);
-                break;
-              } else {
-                alert('Wrong password—please try again.');
-              }
-            }
-          } else {
-            const encAll = new Uint8Array(data.data);
-            const decAll = encAll.map((b,i)=>b^keyBytes[i%keyBytes.length]);
-            makeDownload(decAll, data.filename);
-          }
-        }
-        else if (data.type === 'audio') {
-          // Received an audio blob
-          // PeerJS might automatically convert Blob to ArrayBuffer on receive, need to reconstruct
-          let audioBlob;
-          if (data.data instanceof Blob) {
-            audioBlob = data.data;
-          } else if (data.data instanceof ArrayBuffer) {
-            audioBlob = new Blob([data.data], { type: data.mimeType || 'audio/webm' });
-          } else {
-            console.error('Received unknown audio data type:', data.data);
-            return;
-          }
-          if (audioBlob.size > 0) {
-              appendAudio(audioBlob, data.from);
-          } else {
-              console.log(`Received empty audio blob from ${data.from}`);
-          }
-        }
-      });
-      c.on('close', ()=>{
-        alert('Peer left: '+c.peer);
-        updateGroupKey();
-        updateButtons();
-      });
-    }
-
-    function makeDownload(bytes, filename){
-      const blob = new Blob([bytes],{type:'application/octet-stream'});
-      const a = document.createElement('a');
-      a.download = filename;
-      a.href = URL.createObjectURL(blob);
-      a.textContent = `Download ${filename}`;
-      const msg = document.getElementById('messages');
-      msg.appendChild(a);
-      msg.appendChild(document.createElement('br'));
-    }
-
-    function appendAudio(blob, from) {
-      try {
-        const audioUrl = URL.createObjectURL(blob);
-        const audioElement = document.createElement('audio');
-        audioElement.controls = true;
-        audioElement.src = audioUrl;
-        audioElement.onloadedmetadata = () => {
-            // Optional: Revoke URL once not needed, but keep for playback
-            // URL.revokeObjectURL(audioUrl);
-        };
-        audioElement.onerror = (e) => {
-            console.error("Error loading audio element:", e);
-            container.textContent = `${from}: [Error loading audio]`;
         };
 
-        const container = document.createElement('div');
-        container.style.marginTop = '0.5em';
-        const label = document.createElement('span');
-        label.textContent = `${from}: `;
-        container.appendChild(label);
-        container.appendChild(audioElement);
-
-        const messagesDiv = document.getElementById('messages');
-        messagesDiv.appendChild(container);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight; // Scroll to bottom
-      } catch (err) {
-          console.error("Error creating audio element:", err);
-          append(`${from}: [Error displaying audio]`);
-      }
-    }
-
-    function append(text){
-      const d=document.createElement('div');
-      d.textContent=text;
-      document.getElementById('messages').appendChild(d);
-    }
-
-    // --- Send text ---
-    sendBtn.onclick = ()=>{
-      const txt = document.getElementById('msg-input').value;
-      if(!txt) return;
-      const enc = new TextEncoder().encode(txt)
-        .map((b,i)=>b^groupKey[i%groupKey.length]);
-      const payload = {
-        type:'text',
-        from:`K(${window.__KQSP.display})`,
-        text:String.fromCharCode(...enc)
-      };
-
-      conns.filter(c=>c.open).forEach(c=>c.send(payload));
-      append('You: '+txt);
-      document.getElementById('msg-input').value='';
-    };
-
-
-    // --- Voice Recording Logic ---
-    const recordBtn = document.getElementById('record-btn');
-    const recordStatus = document.getElementById('record-status');
-    let mediaRecorder = null;
-    let audioChunks = [];
-    let isRecording = false;
-
-    recordBtn.onclick = async () => {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert('getUserMedia not supported on your browser!');
-        recordStatus.textContent = 'Browser not supported.';
-        return;
-      }
-      if (isRecording) {
-        // Stop recording
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
-        }
-        recordBtn.textContent = '🎤';
-        recordStatus.textContent = '';
-        isRecording = false;
-      } else {
-        // Start recording
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          mediaRecorder = new MediaRecorder(stream);
-
-          mediaRecorder.ondataavailable = event => {
-            if (event.data.size > 0) {
-                audioChunks.push(event.data);
+        function sendAudio(blob) {
+            if (!conns.some(c => c.open)) {
+                alert('No active connections to send audio.');
+                return;
             }
-          };
-
-          mediaRecorder.onstop = () => {
-            const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-            audioChunks = []; // Reset chunks
-            if (audioBlob.size > 0) {
-                sendAudio(audioBlob);
-            } else {
-                console.log("No audio data recorded.");
+            // Note: Sending raw blob. Encryption could be added here similar to text/file.
+            const payload = {
+                type: 'audio',
+                from: `K(${window.__KQSP.display})`,
+                mimeType: blob.type,
+                data: blob // PeerJS handles Blob directly
+            };
+            let sent = false;
+            conns.filter(c => c.open).forEach(c => {
+                try {
+                    c.send(payload);
+                    sent = true;
+                } catch (err) {
+                    console.error(`Failed to send audio to ${c.peer}:`, err);
+                    alert(`Failed to send audio to ${c.peer}. Connection might be unstable.`);
+                }
+            });
+            if (sent) {
+                appendAudio(blob, 'You'); // Display locally
+                // alert('Voice message sent.'); // Maybe too intrusive, status is enough
+                recordStatus.textContent = 'Voice message sent.';
+                setTimeout(() => {
+                    recordStatus.textContent = '';
+                }, 2000); // Clear status after 2s
             }
-            // Stop microphone tracks
-            stream.getTracks().forEach(track => track.stop());
-          };
-
-          mediaRecorder.onerror = (event) => {
-            console.error(`MediaRecorder error: ${event.error}`);
-            alert(`Recording error: ${event.error.name}`);
-            recordBtn.textContent = '🎤';
-            recordStatus.textContent = 'Recording error.';
-            isRecording = false;
-            stream.getTracks().forEach(track => track.stop());
-          };
-
-          audioChunks = []; // Clear previous chunks
-          mediaRecorder.start();
-          recordBtn.textContent = '🛑'; // Stop icon
-          recordStatus.textContent = 'Recording...';
-          isRecording = true;
-
-        } catch (err) {
-          console.error("Error accessing microphone:", err);
-          alert("Could not access microphone. Please ensure permission is granted and no other app is using it.");
-          recordStatus.textContent = 'Mic access error.';
-          isRecording = false; // Ensure state is reset
         }
-      }
-    };
-
-    function sendAudio(blob) {
-      if (!conns.some(c => c.open)) {
-        alert('No active connections to send audio.');
-        return;
-      }
-      // Note: Sending raw blob. Encryption could be added here similar to text/file.
-      const payload = {
-        type: 'audio',
-        from: `K(${window.__KQSP.display})`,
-        mimeType: blob.type,
-        data: blob // PeerJS handles Blob directly
-      };
-      let sent = false;
-      conns.filter(c => c.open).forEach(c => {
-          try {
-              c.send(payload);
-              sent = true;
-          } catch (err) {
-              console.error(`Failed to send audio to ${c.peer}:`, err);
-              alert(`Failed to send audio to ${c.peer}. Connection might be unstable.`);
-          }
-      });
-      if (sent) {
-        appendAudio(blob, 'You'); // Display locally
-        // alert('Voice message sent.'); // Maybe too intrusive, status is enough
-        recordStatus.textContent = 'Voice message sent.';
-        setTimeout(() => { recordStatus.textContent = ''; }, 2000); // Clear status after 2s
-      }
-    }
 
 
+        // --- Send file with optional password ---
+        sendFileBtn.onclick = async () => {
+            const file = document.getElementById('file-input').files[0];
+            if (!file) return alert('Select a file');
+            const pwd = document.getElementById('file-password').value;
+            let keyBytes = groupKey,
+                protectedFlag = false;
+            const reader = new FileReader();
+            reader.onload = async () => {
+                let data = new Uint8Array(reader.result);
+                if (pwd) {
+                    protectedFlag = true;
+                    const buf = await crypto.subtle.digest('SHA-256',
+                        new TextEncoder().encode(pwd));
+                    keyBytes = new Uint8Array(buf);
+                    const header = new TextEncoder().encode('KQSP');
+                    const combined = new Uint8Array(header.length + data.length);
+                    combined.set(header, 0);
+                    combined.set(data, header.length);
+                    data = combined;
+                }
+                const encAll = data.map((b, i) => b ^ keyBytes[i % keyBytes.length]);
+                const payload = {
+                    type: 'file',
+                    from: `K(${window.__KQSP.display})`,
+                    filename: file.name,
+                    protected: protectedFlag,
+                    data: encAll.buffer
+                };
 
-    // --- Send file with optional password ---
-    sendFileBtn.onclick = async ()=>{
-      const file = document.getElementById('file-input').files[0];
-      if(!file) return alert('Select a file');
-      const pwd = document.getElementById('file-password').value;
-      let keyBytes = groupKey, protectedFlag=false;
-      const reader = new FileReader();
-      reader.onload = async ()=>{
-        let data = new Uint8Array(reader.result);
-        if(pwd){
-          protectedFlag = true;
-          const buf = await crypto.subtle.digest('SHA-256',
-            new TextEncoder().encode(pwd));
-          keyBytes = new Uint8Array(buf);
-          const header = new TextEncoder().encode('KQSP');
-          const combined = new Uint8Array(header.length + data.length);
-          combined.set(header,0);
-          combined.set(data,header.length);
-          data = combined;
-        }
-        const encAll = data.map((b,i)=>b^keyBytes[i%keyBytes.length]);
-        const payload = {
-          type:'file',
-          from:`K(${window.__KQSP.display})`,
-          filename:file.name,
-          protected:protectedFlag,
-          data:encAll.buffer
+
+                conns.filter(c => c.open).forEach(c => c.send(payload));
+                alert('Encrypted file sent: ' + file.name);
+            };
+
+
+            reader.readAsArrayBuffer(file);
         };
 
 
-        conns.filter(c=>c.open).forEach(c=>c.send(payload));
-        alert('Encrypted file sent: '+file.name);
-      };
 
-
-      reader.readAsArrayBuffer(file);
-    };
-
-
-
-    // --- QR Scanner logic ---
-    let qrScanner = null;
-    const scanBtn = document.getElementById('scan-btn');
-    scanBtn.onclick = ()=>{
-      const readerEl = document.getElementById('qr-reader');
-      if(qrScanner){
-        qrScanner.stop().then((ignore) => {
-          // QR Code scanning is stopped.
-          qrScanner.clear();
-          qrScanner = null;
-          readerEl.style.display = 'none';
-          scanBtn.textContent = 'Scan QR';
-        }).catch((err) => {
-          // Stop failed, handle it.
-          console.error("Failed to stop QR scanner:", err);
-          // Still try to reset UI
-          qrScanner = null;
-          readerEl.style.display = 'none';
-          scanBtn.textContent = 'Scan QR';
-        });
-        return;
-      }
-      readerEl.style.display = 'block';
-      qrScanner = new Html5Qrcode("qr-reader");
-      qrScanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: 250 },
-        qrCodeMessage => {
-          // on successful scan
-          const addr = qrCodeMessage.trim();
-          document.getElementById('peer-input').value = addr;
-          connectToPeers();
-          // Stop and clear scanner after successful scan
-          qrScanner.stop().then((ignore) => {
-            qrScanner.clear();
-            qrScanner = null;
-            readerEl.style.display = 'none';
-            scanBtn.textContent = 'Scan QR';
-          }).catch((err) => {
-            console.error("Failed to stop QR scanner after scan:", err);
-            // Still try to reset UI
-            qrScanner = null;
-            readerEl.style.display = 'none';
-            scanBtn.textContent = 'Scan QR';
-          });
-        },
-        errorMessage => {
-          // ignore scan errors
-        }
-      ).catch(err=>{
-        alert("QR scanner error: " + err);
-      });
-      scanBtn.textContent = 'Stop Scan';
-    };
-
-
-  </script>
+        // --- QR Scanner logic ---
+        let qrScanner = null;
+        const scanBtn = document.getElementById('scan-btn');
+        scanBtn.onclick = () => {
+            const readerEl = document.getElementById('qr-reader');
+            if (qrScanner) {
+                qrScanner.stop().then((ignore) => {
+                    // QR Code scanning is stopped.
+                    qrScanner.clear();
+                    qrScanner = null;
+                    readerEl.style.display = 'none';
+                    scanBtn.textContent = 'Scan QR';
+                }).catch((err) => {
+                    // Stop failed, handle it.
+                    console.error("Failed to stop QR scanner:", err);
+                    // Still try to reset UI
+                    qrScanner = null;
+                    readerEl.style.display = 'none';
+                    scanBtn.textContent = 'Scan QR';
+                });
+                return;
+            }
+            readerEl.style.display = 'block';
+            qrScanner = new Html5Qrcode("qr-reader");
+            qrScanner.start({
+                    facingMode: "environment"
+                }, {
+                    fps: 10,
+                    qrbox: 250
+                },
+                qrCodeMessage => {
+                    // on successful scan
+                    const addr = qrCodeMessage.trim();
+                    document.getElementById('peer-input').value = addr;
+                    connectToPeers();
+                    // Stop and clear scanner after successful scan
+                    qrScanner.stop().then((ignore) => {
+                        qrScanner.clear();
+                        qrScanner = null;
+                        readerEl.style.display = 'none';
+                        scanBtn.textContent = 'Scan QR';
+                    }).catch((err) => {
+                        console.error("Failed to stop QR scanner after scan:", err);
+                        // Still try to reset UI
+                        qrScanner = null;
+                        readerEl.style.display = 'none';
+                        scanBtn.textContent = 'Scan QR';
+                    });
+                },
+                errorMessage => {
+                    // ignore scan errors
+                }
+            ).catch(err => {
+                alert("QR scanner error: " + err);
+            });
+            scanBtn.textContent = 'Stop Scan';
+        };
+    </script>
 </body>
+
 </html>
