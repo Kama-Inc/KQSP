@@ -265,10 +265,20 @@
     scanBtn.onclick = ()=>{
       const readerEl = document.getElementById('qr-reader');
       if(qrScanner){
-        qrScanner.clear();
-        qrScanner = null;
-        readerEl.style.display = 'none';
-        scanBtn.textContent = 'Scan QR';
+        qrScanner.stop().then((ignore) => {
+          // QR Code scanning is stopped.
+          qrScanner.clear();
+          qrScanner = null;
+          readerEl.style.display = 'none';
+          scanBtn.textContent = 'Scan QR';
+        }).catch((err) => {
+          // Stop failed, handle it.
+          console.error("Failed to stop QR scanner:", err);
+          // Still try to reset UI
+          qrScanner = null;
+          readerEl.style.display = 'none';
+          scanBtn.textContent = 'Scan QR';
+        });
         return;
       }
       readerEl.style.display = 'block';
@@ -281,10 +291,19 @@
           const addr = qrCodeMessage.trim();
           document.getElementById('peer-input').value = addr;
           connectToPeers();
-          qrScanner.clear();
-          qrScanner = null;
-          readerEl.style.display = 'none';
-          scanBtn.textContent = 'Scan QR';
+          // Stop and clear scanner after successful scan
+          qrScanner.stop().then((ignore) => {
+            qrScanner.clear();
+            qrScanner = null;
+            readerEl.style.display = 'none';
+            scanBtn.textContent = 'Scan QR';
+          }).catch((err) => {
+            console.error("Failed to stop QR scanner after scan:", err);
+            // Still try to reset UI
+            qrScanner = null;
+            readerEl.style.display = 'none';
+            scanBtn.textContent = 'Scan QR';
+          });
         },
         errorMessage => {
           // ignore scan errors
