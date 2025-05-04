@@ -6,8 +6,20 @@ import sys
 import ssl
 import logging
 import os
+import argparse
+from urllib.parse import urlparse # <-- Add this
+
 from aiortc import RTCIceCandidate, RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
-from aiortc.contrib.signaling import BYE, add_signaling_arguments, create_signaling
+# Use specific signaling classes instead of the helper function
+from aiortc.contrib.signaling import BYE, CopyAndPasteSignaling, TcpSocketSignaling, UnixSocketSignaling
+# Import WebSocket signaling (assuming a basic implementation or one compatible with PeerJS server)
+# You might need a more specific implementation depending on the server
+from aiortc.contrib.signaling import add_signaling_arguments as basic_add_signaling_arguments
+from aiortc.contrib.signaling import create_signaling as basic_create_signaling
+# Let's try using a generic WebSocket approach first, might need refinement
+# from aiortc.contrib.signaling import Signalling # Base class, might need custom implementation <-- REMOVE THIS LINE
+import aiohttp # Need aiohttp for WebSocket client
+
 
 # --- K(addr) Generation & Global State ---
 def generate_k_addr():
@@ -77,10 +89,176 @@ async def handle_data_channel(channel, peer_id):
         # This part is tricky as channel doesn't directly link back to pc easily
         # We might need to manage connections differently
 
+# --- WebSocket Signaling (Basic Example) ---
+# This is a placeholder/example. A robust implementation needs to handle
+# the specific message format of your chosen WebSocket signaling server (e.g., PeerJS server).
+class WebSocketSignaling: # <-- REMOVE INHERITANCE
+    def __init__(self, ws_url, peer_id, peer_role='offer'): # Added peer_id and role
+        self._ws_url = ws_url
+        self._peer_id = peer_id
+        self._peer_role = peer_role # 'offer' or 'answer'
+        self._websocket = None
+        self._session = None
+        self._target_peer_id = None # For direct messaging if needed
+
+    async def connect(self):
+        self._session = aiohttp.ClientSession()
+        try:
+            self._websocket = await self._session.ws_connect(self._ws_url)
+            # Register with the server (example, depends on server protocol)
+            # PeerJS servers often require an OPEN message with the peer ID
+            await self._websocket.send_json({'type': 'OPEN', 'src': self._peer_id})
+            # Start listening for messages
+            asyncio.create_task(self._receive_loop())
+            await message_queue.put(f"[System] WebSocket connected to {self._ws_url} as {self._peer_id}")
+        except Exception as e:
+            await message_queue.put(f"[System] WebSocket connection failed: {e}")
+            if self._session:
+                await self._session.close()
+            raise
+
+    async def close(self):
+        if self._websocket:
+            await self._websocket.close()
+        if self._session:
+            await self._session.close()
+        await message_queue.put("[System] WebSocket closed.")
+
+    async def receive(self):
+        # This is now handled by the _receive_loop pushing to the main queue or handling internally
+        # For simplicity, we'll let the main loop poll the message_queue for signaling messages
+        # A better approach would be a dedicated signaling queue or direct calls
+        await asyncio.sleep(3600) # Block indefinitely, messages handled in loop
+
+    async def _receive_loop(self):
+        try:
+            async for msg in self._websocket:
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    data = json.loads(msg.data)
+                    await message_queue.put(f"[Signal] Received: {data}") # Log raw signal
+
+                    # Basic PeerJS-like message handling (adapt as needed)
+                    msg_type = data.get('type')
+                    src_peer = data.get('src')
+                    dst_peer = data.get('dst')
+
+                    if dst_peer != self._peer_id: # Ignore messages not for us
+                        continue
+
+                    if msg_type == 'OFFER':
+                        self._target_peer_id = src_peer # Store who sent the offer
+                        await pc.setRemoteDescription(RTCSessionDescription(sdp=data['payload']['sdp'], type=data['payload']['type']))
+                        # Create and send answer
+                        await pc.setLocalDescription(await pc.createAnswer())
+                        await self.send(pc.localDescription)
+                    elif msg_type == 'ANSWER':
+                        await pc.setRemoteDescription(RTCSessionDescription(sdp=data['payload']['sdp'], type=data['payload']['type']))
+                    elif msg_type == 'CANDIDATE':
+                        candidate_info = data['payload']['candidate']
+                        # aiortc needs candidate, sdpMid, sdpMLineIndex
+                        candidate = RTCIceCandidate(
+                            sdpMid=candidate_info.get('sdpMid'),
+                            sdpMLineIndex=candidate_info.get('sdpMLineIndex'),
+                            candidate=candidate_info.get('candidate')
+                        )
+                        await pc.addIceCandidate(candidate)
+                    elif msg_type == 'LEAVE': # PeerJS uses LEAVE
+                        await message_queue.put(f"[System] Peer {src_peer} left.")
+                        # Handle disconnection logic if needed
+                        if self._target_peer_id == src_peer:
+                             # Potentially close the connection
+                             pass
+                    elif msg_type == 'EXPIRE': # PeerJS uses EXPIRE
+                         await message_queue.put(f"[System] Peer {src_peer} expired.")
+                         # Handle disconnection logic
+
+                elif msg.type == aiohttp.WSMsgType.ERROR:
+                    await message_queue.put(f"[System] WebSocket connection error: {self._websocket.exception()}")
+                    break
+        except Exception as e:
+            await message_queue.put(f"[System] WebSocket receive loop error: {e}")
+        finally:
+             await message_queue.put("[System] WebSocket receive loop ended.")
+             # Signal main loop to exit or reconnect?
+             stop_event.set()
+
+    async def send(self, obj):
+        if isinstance(obj, RTCSessionDescription):
+            # Send OFFER or ANSWER (PeerJS format)
+            payload = {'type': obj.type.upper(), 'sdp': obj.sdp}
+            # Need target peer ID - how do we get this? Assume stored from OFFER or arg
+            if not self._target_peer_id:
+                 # If offering, need to specify target peer ID somehow (e.g., via command line)
+                 # This basic example assumes we are answering an offer or target is known
+                 await message_queue.put("[System] Cannot send OFFER/ANSWER: Target Peer ID not set.")
+                 return
+            message = {'type': obj.type.upper(), 'payload': payload, 'dst': self._target_peer_id, 'src': self._peer_id}
+            await self._websocket.send_json(message)
+            await message_queue.put(f"[Signal] Sent {obj.type.upper()} to {self._target_peer_id}")
+        elif isinstance(obj, RTCIceCandidate):
+            # Send CANDIDATE (PeerJS format)
+            if obj.sdpMid is None:
+                 # Skip null candidates often generated at the end
+                 return
+            payload = {
+                'candidate': {
+                    'candidate': obj.candidate,
+                    'sdpMid': obj.sdpMid,
+                    'sdpMLineIndex': obj.sdpMLineIndex,
+                },
+                'type': 'candidate' # PeerJS seems to use this structure
+            }
+            if not self._target_peer_id:
+                 await message_queue.put("[System] Cannot send CANDIDATE: Target Peer ID not set.")
+                 return
+            message = {'type': 'CANDIDATE', 'payload': payload, 'dst': self._target_peer_id, 'src': self._peer_id}
+            await self._websocket.send_json(message)
+            # await message_queue.put(f"[Signal] Sent CANDIDATE to {self._target_peer_id}") # Too verbose
+        elif obj is BYE:
+            # Send LEAVE (PeerJS format)
+            if self._target_peer_id:
+                message = {'type': 'LEAVE', 'dst': self._target_peer_id, 'src': self._peer_id}
+                await self._websocket.send_json(message)
+                await message_queue.put(f"[Signal] Sent LEAVE to {self._target_peer_id}")
+
+# --- WebRTC Data Channel Handling ---
+async def handle_data_channel(channel, peer_id):
+    """Handles messages received on a data channel."""
+    await message_queue.put(f"[System] Data channel '{channel.label}' created with {peer_id}")
+    update_group_key({pc.remoteDescription.sdp.split('o=')[1].split(' ')[0] for pc in pcs if pc.remoteDescription}) # Update key on new channel
+
+    @channel.on("message")
+    async def on_message(message):
+        try:
+            # Assume message is JSON payload as string
+            payload = json.loads(message)
+            if payload.get('type') == 'text':
+                encrypted_text_bytes = payload['text'].encode('latin-1')
+                decrypted_bytes = xor_crypt(encrypted_text_bytes, group_key)
+                await message_queue.put(f"{payload['from']}: {decrypted_bytes.decode('utf-8')}")
+            # Add handlers for 'file', 'audio' later
+            else:
+                await message_queue.put(f"[System] Received unknown message type from {peer_id}: {payload.get('type')}")
+        except (json.JSONDecodeError, UnicodeDecodeError, KeyError, AttributeError) as e:
+            await message_queue.put(f"[System] Error processing message from {peer_id} on channel {channel.label}: {e}")
+            # Log raw message for debugging if not JSON
+            if isinstance(message, str):
+                 await message_queue.put(f"[System] Raw data: {message[:100]}...")
+            else:
+                 await message_queue.put(f"[System] Received non-string data: {type(message)}")
+
+    @channel.on("close")
+    async def on_close():
+        await message_queue.put(f"[System] Data channel '{channel.label}' closed with {peer_id}")
+        # Find the peer connection associated with this channel to remove if needed
+        # This part is tricky as channel doesn't directly link back to pc easily
+        # We might need to manage connections differently
+
 # --- Main Application Logic ---
-async def run(pc, signaling, role):
+async def run(pc, signaling, role, target_peer=None): # Added target_peer
     """Main coroutine for handling a single peer connection."""
     connected_peer_ids = set()
+    signaling._target_peer_id = target_peer # Pass target to signaling instance
 
     def get_peer_id(pc_obj):
         if pc_obj and pc_obj.remoteDescription:
@@ -103,71 +281,41 @@ async def run(pc, signaling, role):
     @pc.on("connectionstatechange")
     async def on_connectionstatechange():
         peer_id = get_peer_id(pc)
-        await message_queue.put(f"[System] Connection state with {peer_id} is {pc.connectionState}")
-        if pc.connectionState == "failed" or pc.connectionState == "closed" or pc.connectionState == "disconnected":
-            await signaling.send(BYE)
+        state = pc.connectionState
+        await message_queue.put(f"[System] Connection state with {peer_id} is {state}")
+        if state == "failed" or state == "closed" or state == "disconnected":
+            # await signaling.send(BYE) # Let WebSocket loop handle LEAVE
             if pc in pcs:
                 pcs.discard(pc)
-            connected_peer_ids.discard(peer_id)
+            if peer_id != "unknown-peer":
+                 connected_peer_ids.discard(peer_id)
             update_group_key(connected_peer_ids)
             await pc.close()
-        elif pc.connectionState == "connected":
-             connected_peer_ids.add(peer_id)
+            if not pcs: # If no connections left, stop
+                 stop_event.set()
+        elif state == "connected":
+             if peer_id != "unknown-peer":
+                 connected_peer_ids.add(peer_id)
              update_group_key(connected_peer_ids)
-
-    @pc.on("track")
-    def on_track(track):
-        # KQSP doesn't use media tracks currently, but handle gracefully
-        @track.on("ended")
-        async def on_ended():
-             await message_queue.put(f"[System] Track {track.kind} ended")
+             await message_queue.put(f"[System] Connected to {peer_id}!")
 
     # Connect signaling
     await signaling.connect()
 
     if role == "offer":
         # Create data channel
-        channel = pc.createDataChannel("kqsp-chat")
-        peer_id = "offering-peer" # Placeholder until connected
+        channel = pc.createDataChannel("kqsp-chat") # Use same label as web
+        peer_id = target_peer if target_peer else "offering-peer"
         asyncio.create_task(handle_data_channel(channel, peer_id))
 
         # Send offer
         await pc.setLocalDescription(await pc.createOffer())
         await signaling.send(pc.localDescription)
-        await message_queue.put("[System] Sent offer...")
+        await message_queue.put(f"[System] Sent offer to {target_peer}...")
 
-    # Consume signaling
-    while True:
-        try:
-            obj = await signaling.receive()
-
-            if isinstance(obj, RTCSessionDescription):
-                await pc.setRemoteDescription(obj)
-                peer_id = get_peer_id(pc)
-                await message_queue.put(f"[System] Received remote description from {peer_id}")
-
-                if obj.type == "offer":
-                    # Create data channel if answering
-                    # Note: on_datachannel handles channel creation initiated by remote peer
-                    # Send answer
-                    await pc.setLocalDescription(await pc.createAnswer())
-                    await signaling.send(pc.localDescription)
-                    await message_queue.put("[System] Sent answer...")
-            elif isinstance(obj, RTCIceCandidate):
-                await pc.addIceCandidate(obj)
-                # await message_queue.put("[System] Added ICE candidate") # Too verbose
-            elif obj is BYE:
-                await message_queue.put("[System] Received BYE, closing connection")
-                break
-            else:
-                await message_queue.put(f"[System] Received unknown signaling object: {type(obj)}")
-        except asyncio.CancelledError:
-            break
-        except Exception as e:
-            await message_queue.put(f"[System] Error during signaling: {e}")
-            break
-
-    await message_queue.put("[System] Signaling loop ended.")
+    # Wait for connection or stop signal
+    await stop_event.wait()
+    await message_queue.put("[System] Main loop exiting due to stop event.")
 
 # --- User Input and Message Sending ---
 async def consume_user_input():
@@ -261,16 +409,27 @@ async def print_messages():
 async def main(args):
     print("--- Kazan's Quick Share Protocol (CLI - WebRTC) ---")
     print(f"Your PeerID: {MY_PEER_ID}")
-    print(f"Signaling Server: {args.signaling_host}:{args.signaling_port}")
+
+    # Create signaling instance based on args
+    if args.signaling_url:
+        print(f"Signaling Server (WebSocket): {args.signaling_url}")
+        # Determine role based on whether target_peer is provided
+        role = 'offer' if args.target_peer else 'answer'
+        print(f"Role: {role}" + (f" (Target: {args.target_peer})" if role == 'offer' else ""))
+        signaling = WebSocketSignaling(args.signaling_url, MY_PEER_ID, role)
+    else:
+        # Fallback to basic signaling if no URL provided
+        print(f"Signaling Server (Basic): {args.signaling} {args.signaling_host}:{args.signaling_port}")
+        print(f"Role: {args.role}")
+        signaling = basic_create_signaling(args)
+        role = args.role
+
     print("Connecting to signaling server...")
     print("--------------------------------------------------")
 
-    # Create signaling instance
-    # Note: This basic example uses aiortc's built-in TCP signaling.
-    # For web compatibility, a WebSocket signaling server (like PeerJS server or custom) is needed.
-    signaling = create_signaling(args)
-
     # Create peer connection
+    # Need global pc for WebSocket callback access, or pass it differently
+    global pc
     pc = RTCPeerConnection()
     pcs.add(pc)
 
@@ -280,17 +439,18 @@ async def main(args):
 
     # Run main connection logic
     try:
-        await run(pc=pc, signaling=signaling, role=args.role)
+        await run(pc=pc, signaling=signaling, role=role, target_peer=args.target_peer if args.signaling_url else None)
     except Exception as e:
         print(f"[System] Main execution error: {e}")
     finally:
         print("[System] Cleaning up...")
-        stop_event.set()
+        if not stop_event.is_set():
+             stop_event.set() # Ensure stop event is set on exit
 
         # Close signaling and connections
         await signaling.close()
-        coros = [pc.close() for pc in pcs]
-        await asyncio.gather(*coros)
+        coros = [p.close() for p in pcs]
+        await asyncio.gather(*coros, return_exceptions=True)
         pcs.clear()
 
         # Cancel background tasks
@@ -312,11 +472,38 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     logging.getLogger("aiortc").setLevel(logging.WARNING)
     logging.getLogger("aioice").setLevel(logging.WARNING)
+    logging.getLogger("aiohttp").setLevel(logging.WARNING) # Quiet aiohttp
 
-    # Add signaling arguments (host, port, role)
-    parser = add_signaling_arguments()
+    # Create argument parser
+    parser = argparse.ArgumentParser(description="KQSP CLI with WebRTC")
+
+    # Add signaling arguments (host, port, role) - keep basic for fallback
+    # basic_add_signaling_arguments(parser)
+    # Instead, add specific arguments
+    parser.add_argument('--role', choices=['offer', 'answer'], default='answer', help='Role for basic signaling (offer or answer)')
+    parser.add_argument('--signaling', '-s', choices=['copy-and-paste', 'tcp-socket', 'unix-socket'], default='tcp-socket', help='Basic signaling type')
+    parser.add_argument('--signaling-host', default='127.0.0.1', help='Signaling host for tcp-socket')
+    parser.add_argument('--signaling-port', type=int, default=8080, help='Signaling port for tcp-socket')
+    parser.add_argument('--signaling-path', default='aiortc.socket', help='Signaling path for unix-socket')
+
+    # Add WebSocket signaling arguments
+    parser.add_argument('--signaling-url', help='URL of the WebSocket signaling server (e.g., wss://host:port/path)')
+    parser.add_argument('--target-peer', help='Peer ID to connect to when offering via WebSocket')
+
     # Add any KQSP specific arguments here if needed
+    # parser.add_argument('--my-arg', help='Example KQSP argument')
+
     args = parser.parse_args()
+
+    # Validate: If using WebSocket, role is determined by target_peer
+    if args.signaling_url and not args.target_peer:
+        args.role = 'answer' # Default to answer if URL given but no target
+    elif args.signaling_url and args.target_peer:
+        args.role = 'offer'
+
+    # Validate: Target peer is required for offering via WebSocket
+    if args.signaling_url and args.role == 'offer' and not args.target_peer:
+        parser.error("Argument --target-peer is required when offering via WebSocket (--signaling-url)")
 
     # SSL context (optional, depends on signaling server)
     # ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
