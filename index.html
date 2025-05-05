@@ -141,6 +141,21 @@
             #qr-reader {
                 width: 100%;
             }
+
+            /* K Block Styles */
+            .k-block-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                grid-template-rows: repeat(2, 1fr);
+                border: 1px solid var(--border);
+                margin: 0.5em auto;
+                /* Center the block */
+            }
+
+            .k-block-cell {
+                width: 100%;
+                height: 100%;
+            }
         }
     </style>
 </head>
@@ -178,9 +193,9 @@
     <h2>Messages</h2>
     <div id="messages"></div>
 
-    <!-- PeerJS, QRCode.js, html5-qrcode -->
+    <!-- PeerJS, html5-qrcode -->
     <script src="https://unpkg.com/peerjs@1.3.2/dist/peerjs.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Removed QRCode.js -->
     <script src="html5-qrcode.min.js"></script> <!-- Load locally -->
     <script>
         // --- Immediate K(addr) generation & QR render ---
@@ -194,11 +209,44 @@
                 id
             };
             document.getElementById('kaddr').textContent = 'K(' + display + ')';
-            new QRCode(document.getElementById('qrcode'), {
-                text: 'K(' + display + ')',
-                width: 128,
-                height: 128
-            });
+
+            // Function to render K Block
+            function renderKBlock(parts, containerId, size) {
+                const container = document.getElementById(containerId);
+                if (!container) return;
+                container.innerHTML = ''; // Clear previous content
+
+                const numberToGrayscale = (num) => {
+                    const clamped = Math.max(0, Math.min(255, num));
+                    const hex = clamped.toString(16).padStart(2, '0');
+                    return `#${hex}${hex}${hex}`;
+                };
+
+                const colors = parts.map(numberToGrayscale);
+                const cellSize = size / 2;
+
+                const grid = document.createElement('div');
+                grid.className = 'k-block-grid';
+                grid.style.width = `${size}px`;
+                grid.style.height = `${size}px`;
+                grid.title = `K(${parts.join('.')})`; // Add title for hover info
+
+                colors.forEach(color => {
+                    const cell = document.createElement('div');
+                    cell.className = 'k-block-cell';
+                    // Inline styles needed as classes might not apply correctly inside @media
+                    cell.style.width = `${cellSize}px`;
+                    cell.style.height = `${cellSize}px`;
+                    cell.style.backgroundColor = color;
+                    grid.appendChild(cell);
+                });
+
+                container.appendChild(grid);
+            }
+
+            // Render the K Block instead of QR Code
+            renderKBlock(parts, 'qrcode', 128);
+
         })();
 
         // --- Dark mode toggle ---
