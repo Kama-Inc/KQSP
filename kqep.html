@@ -314,7 +314,10 @@
 
         <main class="kqep-content-area">
             <div id="kes-connection-status">
-                Your KES ID: <span id="kes-my-id">Initializing...</span>
+                Your KES Address: <input type="text" id="kes-my-address-input" placeholder="e.g., User#kes.serv.net" style="margin-left: 5px; padding: 5px; border: 1px solid #ccc; border-radius: 3px;">
+                <button id="kes-set-address-button" style="padding: 5px 10px; margin-left: 5px;">Set Address</button>
+                <br>Your KES ID (for connection): <span id="kes-my-peer-id">Initializing...</span> (Share this with others to connect)
+                <br>Your Display Address: <span id="kes-my-display-address">Not set</span>
             </div>
             <div id="kes-controls">
                 <h3>Connect to a Peer (KES ID):</h3>
@@ -358,7 +361,10 @@
         });
 
         // KES - Kama's Email Service - P2P Functionality
-        const myIdDisplay = document.getElementById('kes-my-id');
+        const myPeerIdDisplay = document.getElementById('kes-my-peer-id');
+        const myDisplayAddressDisplay = document.getElementById('kes-my-display-address');
+        const myAddressInput = document.getElementById('kes-my-address-input');
+        const setAddressButton = document.getElementById('kes-set-address-button');
         const peerIdInput = document.getElementById('kes-peer-id-input');
         const connectButton = document.getElementById('kes-connect-button');
         const connectionInfo = document.getElementById('kes-connection-info');
@@ -371,14 +377,24 @@
         let peer = null;
         let currentConnection = null;
         let localPeerId = null;
+        let localKesAddress = '';
 
         function initializePeer() {
             peer = new Peer(); // Let PeerJS generate an ID
 
             peer.on('open', function(id) {
                 localPeerId = id;
-                myIdDisplay.textContent = id;
-                console.log('My KES ID is: ' + id);
+                myPeerIdDisplay.textContent = id;
+                console.log('My KES Peer ID is: ' + id);
+                // Attempt to load address from local storage
+                const savedAddress = localStorage.getItem('kesUserAddress');
+                if (savedAddress) {
+                    localKesAddress = savedAddress;
+                    myAddressInput.value = savedAddress;
+                    myDisplayAddressDisplay.textContent = savedAddress;
+                } else {
+                    myDisplayAddressDisplay.textContent = "Not set - please set your address above.";
+                }
             });
 
             peer.on('connection', function(conn) {
@@ -465,9 +481,10 @@
                 return;
             }
 
+            const senderAddress = localKesAddress || localPeerId; // Use custom address if set, otherwise PeerID
             const kesMail = {
-                from: localPeerId,
-                to: recipientId,
+                from: senderAddress,
+                to: recipientId, // This is still the recipient's PeerJS ID
                 subject: subject,
                 body: body,
                 timestamp: new Date().toISOString()
@@ -496,6 +513,22 @@
             `;
             messagesDiv.prepend(messageEl); // Add new messages to the top
         }
+
+        setAddressButton.addEventListener('click', () => {
+            const desiredAddress = myAddressInput.value.trim();
+            if (desiredAddress) {
+                if (!desiredAddress.includes('#') || !desiredAddress.includes('.')) {
+                    alert('Please use a valid address format, e.g., YourName#kes.serv.net');
+                    return;
+                }
+                localKesAddress = desiredAddress;
+                myDisplayAddressDisplay.textContent = localKesAddress;
+                localStorage.setItem('kesUserAddress', localKesAddress); // Save to local storage
+                alert('KES Address set to: ' + localKesAddress);
+            } else {
+                alert('Please enter a KES address.');
+            }
+        });
 
         // Initialize PeerJS when the page loads
         window.addEventListener('load', initializePeer);
