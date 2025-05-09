@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KQEP - Kama's Email Service (KES)</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            background-color: #f6f8fc;
+            color: #202124;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .kqep-header {
+            background-color: #f6f8fc;
+            padding: 8px 20px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 64px;
+            box-sizing: border-box;
+        }
+
+        .kqep-header-left {
+            display: flex;
+            align-items: center;
+        }
+
+        .kqep-logo {
+            font-size: 22px;
+            font-weight: bold;
+            color: #d93025;
+            /* Gmail-like red */
+            margin-right: 30px;
+        }
+
+        .kqep-search-bar {
+            background-color: #eaf1fb;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 16px;
+            width: 500px;
+            font-size: 16px;
+        }
+
+        .kqep-search-bar:focus {
+            background-color: #fff;
+            box-shadow: 0 1px 1px 0 rgba(65, 69, 73, .3), 0 1px 3px 1px rgba(65, 69, 73, .15);
+            outline: none;
+        }
+
+        .kqep-header-right {
+            /* Placeholder for icons like settings, apps */
+        }
+
+        .kqep-main-container {
+            display: flex;
+            flex-grow: 1;
+            overflow: hidden;
+            /* Prevents scrollbars on body */
+        }
+
+        .kqep-sidebar {
+            width: 256px;
+            background-color: #f6f8fc;
+            padding-top: 16px;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+        }
+
+        .kqep-compose-button {
+            background-color: #fff;
+            color: #3c4043;
+            border: 1px solid transparent;
+            border-radius: 24px;
+            padding: 0 24px 0 0;
+            margin: 8px 16px 16px 8px;
+            min-width: 56px;
+            height: 48px;
+            box-shadow: 0 1px 2px 0 rgba(60, 64, 67, .302), 0 1px 3px 1px rgba(60, 64, 67, .149);
+            font-size: .875rem;
+            font-weight: 500;
+            letter-spacing: .25px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .kqep-compose-button:hover {
+            box-shadow: 0 1px 3px 0 rgba(60, 64, 67, .302), 0 4px 8px 3px rgba(60, 64, 67, .149);
+            background-color: #fafafb;
+        }
+
+        .kqep-compose-button-icon {
+            background-image: url(https://www.gstatic.com/images/icons/material/colored_icons/1x/create_32dp.png);
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: 20px;
+            display: inline-block;
+            height: 24px;
+            width: 24px;
+            margin: 0 12px 0 12px;
+        }
+
+        .kqep-folder-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            flex-grow: 1;
+        }
+
+        .kqep-folder-item {
+            display: flex;
+            align-items: center;
+            padding: 0 12px 0 26px;
+            height: 32px;
+            border-top-right-radius: 16px;
+            border-bottom-right-radius: 16px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 12px;
+        }
+
+        .kqep-folder-item:hover {
+            background-color: #e8eaed;
+        }
+
+        .kqep-folder-item.active {
+            background-color: #d3e3fd;
+            font-weight: bold;
+            color: #1967d2;
+        }
+
+        .kqep-folder-item-icon {
+            margin-right: 18px;
+            /* Add icons later */
+            width: 20px;
+            height: 20px;
+            opacity: 0.54;
+        }
+
+        .kqep-folder-item.active .kqep-folder-item-icon {
+            opacity: 1;
+            filter: invert(39%) sepia(91%) saturate(2020%) hue-rotate(200deg) brightness(90%) contrast(86%);
+            /* Color for active icon */
+        }
+
+        .kqep-content-area {
+            flex-grow: 1;
+            background-color: #fff;
+            padding: 20px;
+            overflow-y: auto;
+            /* Allow scrolling for content */
+        }
+
+        .kqep-message-list-placeholder {
+            text-align: center;
+            color: #5f6368;
+            margin-top: 50px;
+        }
+
+        /* Basic icons (using text for simplicity, replace with SVGs/image icons for real app) */
+        .icon-inbox::before {
+            content: "📥";
+        }
+
+        .icon-sent::before {
+            content: "📤";
+        }
+
+        .icon-archive::before {
+            content: "🗄️";
+        }
+
+        .icon-spam::before {
+            content: "🗑️";
+        }
+
+        .icon-contacts::before {
+            content: "👥";
+        }
+
+        /* KES specific styles */
+        #kes-connection-status,
+        #kes-controls,
+        #kes-compose-area,
+        #kes-inbox-area {
+            background-color: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+        }
+
+        #kes-connection-status span,
+        #kes-connection-info {
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        #kes-controls input[type="text"],
+        #kes-compose-area input[type="text"],
+        #kes-compose-area textarea {
+            width: calc(100% - 22px);
+            /* Account for padding/border */
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        #kes-compose-area textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        #kes-controls button,
+        #kes-compose-area button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        #kes-controls button:hover,
+        #kes-compose-area button:hover {
+            background-color: #0056b3;
+        }
+
+        .kes-message-item {
+            border: 1px solid #e0e0e0;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+
+        .kes-message-sent {
+            background-color: #e7f3ff;
+            /* Light blue for sent messages */
+            border-left: 3px solid #007bff;
+        }
+
+        .kes-message-received {
+            background-color: #f0f0f0;
+            /* Light grey for received messages */
+            border-left: 3px solid #28a745;
+        }
+
+        .kes-message-item strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .kes-message-item p {
+            margin: 5px 0;
+        }
+
+        .kes-message-item small {
+            font-size: 0.8em;
+            color: #6c757d;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="kqep-header">
+        <div class="kqep-header-left">
+            <div class="kqep-logo">KQEP</div>
+            <input type="text" class="kqep-search-bar" placeholder="Search mail (not functional)">
+        </div>
+        <div class="kqep-header-right">
+            <!-- Placeholder for settings, user avatar etc. -->
+        </div>
+    </header>
+
+    <div class="kqep-main-container">
+        <aside class="kqep-sidebar">
+            <button class="kqep-compose-button">
+                <span class="kqep-compose-button-icon"></span>
+                Compose
+            </button>
+            <ul class="kqep-folder-list">
+                <li class="kqep-folder-item active">
+                    <span class="kqep-folder-item-icon icon-inbox"></span> Inbox
+                </li>
+                <li class="kqep-folder-item">
+                    <span class="kqep-folder-item-icon icon-sent"></span> Sent
+                </li>
+                <li class="kqep-folder-item">
+                    <span class="kqep-folder-item-icon icon-archive"></span> Archive
+                </li>
+                <li class="kqep-folder-item">
+                    <span class="kqep-folder-item-icon icon-spam"></span> Spam
+                </li>
+                <li class="kqep-folder-item">
+                    <span class="kqep-folder-item-icon icon-contacts"></span> Contacts
+                </li>
+            </ul>
+        </aside>
+
+        <main class="kqep-content-area">
+            <div id="kes-connection-status">
+                Your KES ID: <span id="kes-my-id">Initializing...</span>
+            </div>
+            <div id="kes-controls">
+                <h3>Connect to a Peer (KES ID):</h3>
+                <input type="text" id="kes-peer-id-input" placeholder="Enter recipient's KES ID">
+                <button id="kes-connect-button">Connect</button>
+                <span id="kes-connection-info"></span>
+            </div>
+
+            <div id="kes-compose-area">
+                <h3>Compose KES Mail:</h3>
+                To (KES ID): <input type="text" id="kes-recipient-id" placeholder="Recipient KES ID"><br>
+                Subject: <input type="text" id="kes-subject" placeholder="Subject"><br>
+                Message: <textarea id="kes-message-body" placeholder="Your message"></textarea><br>
+                <button id="kes-send-button">Send KES Mail</button>
+            </div>
+
+            <div id="kes-inbox-area">
+                <h3>KES Inbox:</h3>
+                <div id="kes-messages">No messages yet.</div>
+            </div>
+
+            <div class="kqep-message-list-placeholder">
+                <h2>Welcome to KQEP</h2>
+                <p>Your peer-to-peer email messages will appear here.</p>
+                <p>(This is a visual mock-up. Functionality is not implemented.)</p>
+            </div>
+            <!-- Message list and message view would go here -->
+        </main>
+    </div>
+
+    <script>
+        // Basic interactivity for folder selection (visual only)
+        document.querySelectorAll('.kqep-folder-item').forEach(item => {
+            item.addEventListener('click', () => {
+                document.querySelector('.kqep-folder-item.active').classList.remove('active');
+                item.classList.add('active');
+                // In a real app, this would load the content for the selected folder
+                document.querySelector('.kqep-message-list-placeholder h2').textContent =
+                    `Displaying ${item.textContent.trim()}`;
+            });
+        });
+
+        // KES - Kama's Email Service - P2P Functionality
+        const myIdDisplay = document.getElementById('kes-my-id');
+        const peerIdInput = document.getElementById('kes-peer-id-input');
+        const connectButton = document.getElementById('kes-connect-button');
+        const connectionInfo = document.getElementById('kes-connection-info');
+        const recipientIdInput = document.getElementById('kes-recipient-id');
+        const subjectInput = document.getElementById('kes-subject');
+        const messageBodyInput = document.getElementById('kes-message-body');
+        const sendButton = document.getElementById('kes-send-button');
+        const messagesDiv = document.getElementById('kes-messages');
+
+        let peer = null;
+        let currentConnection = null;
+        let localPeerId = null;
+
+        function initializePeer() {
+            peer = new Peer(); // Let PeerJS generate an ID
+
+            peer.on('open', function(id) {
+                localPeerId = id;
+                myIdDisplay.textContent = id;
+                console.log('My KES ID is: ' + id);
+            });
+
+            peer.on('connection', function(conn) {
+                console.log('Incoming connection from: ' + conn.peer);
+                connectionInfo.textContent = `Connected with ${conn.peer}`;
+                currentConnection = conn; // For simplicity, handle one connection at a time
+                recipientIdInput.value = conn.peer; // Pre-fill recipient for replies
+
+                conn.on('data', function(data) {
+                    console.log('Received KES Mail:', data);
+                    displayMessage(data, 'received');
+                });
+
+                conn.on('close', function() {
+                    connectionInfo.textContent = 'Connection closed.';
+                    currentConnection = null;
+                });
+            });
+
+            peer.on('error', function(err) {
+                console.error('PeerJS error:', err);
+                alert('PeerJS error: ' + err.message);
+                connectionInfo.textContent = `Error: ${err.type}`;
+            });
+        }
+
+        connectButton.addEventListener('click', () => {
+            const remotePeerId = peerIdInput.value.trim();
+            if (!remotePeerId) {
+                alert('Please enter a KES ID to connect to.');
+                return;
+            }
+            if (!peer || !localPeerId) {
+                alert('PeerJS not initialized yet. Please wait.');
+                return;
+            }
+            if (remotePeerId === localPeerId) {
+                alert('Cannot connect to yourself.');
+                return;
+            }
+
+            console.log('Attempting to connect to KES ID: ' + remotePeerId);
+            connectionInfo.textContent = `Connecting to ${remotePeerId}...`;
+
+            if (currentConnection) {
+                currentConnection.close(); // Close existing connection before starting a new one
+            }
+
+            currentConnection = peer.connect(remotePeerId);
+
+            currentConnection.on('open', function() {
+                console.log('Connection established with KES ID: ' + remotePeerId);
+                connectionInfo.textContent = `Connected with ${remotePeerId}`;
+                recipientIdInput.value = remotePeerId; // Pre-fill for sending
+            });
+
+            currentConnection.on('data', function(data) {
+                console.log('Received KES Mail:', data);
+                displayMessage(data, 'received');
+            });
+
+            currentConnection.on('error', function(err) {
+                console.error('Connection error:', err);
+                connectionInfo.textContent = `Connection error with ${remotePeerId}.`;
+            });
+            currentConnection.on('close', function() {
+                if (connectionInfo.textContent.startsWith(`Connected with ${remotePeerId}`)) {
+                    connectionInfo.textContent = `Disconnected from ${remotePeerId}.`;
+                }
+            });
+        });
+
+        sendButton.addEventListener('click', () => {
+            const recipientId = recipientIdInput.value.trim();
+            const subject = subjectInput.value.trim();
+            const body = messageBodyInput.value.trim();
+
+            if (!currentConnection || !currentConnection.open) {
+                alert('Not connected to any peer. Please connect first.');
+                return;
+            }
+            if (!recipientId || !subject || !body) {
+                alert('Please fill in recipient KES ID, subject, and message body.');
+                return;
+            }
+
+            const kesMail = {
+                from: localPeerId,
+                to: recipientId,
+                subject: subject,
+                body: body,
+                timestamp: new Date().toISOString()
+            };
+
+            currentConnection.send(kesMail);
+            console.log('KES Mail sent:', kesMail);
+            displayMessage(kesMail, 'sent'); // Display sent message locally
+            // Clear compose fields after sending
+            // subjectInput.value = ''; // Keep subject for potential follow-up
+            messageBodyInput.value = '';
+        });
+
+        function displayMessage(mail, type) {
+            if (messagesDiv.innerHTML.includes('No messages yet.')) {
+                messagesDiv.innerHTML = ''; // Clear placeholder
+            }
+            const messageEl = document.createElement('div');
+            messageEl.classList.add('kes-message-item');
+            messageEl.classList.add(type === 'sent' ? 'kes-message-sent' : 'kes-message-received');
+            messageEl.innerHTML = `
+                <strong>${type === 'sent' ? 'To: ' + mail.to : 'From: ' + mail.from}</strong><br>
+                <strong>Subject: ${mail.subject}</strong><br>
+                <p>${mail.body}</p>
+                <small>${new Date(mail.timestamp).toLocaleString()}</small>
+            `;
+            messagesDiv.prepend(messageEl); // Add new messages to the top
+        }
+
+        // Initialize PeerJS when the page loads
+        window.addEventListener('load', initializePeer);
+
+        // Note: This is a basic HTML/CSS structure for a Gmail-like UI.
+        // Implementing actual email functionality (even P2P) is a complex task
+        // and would require significant JavaScript for PeerJS communication,
+        // message storage, contact management, etc.
+    </script>
+</body>
+
+</html>
